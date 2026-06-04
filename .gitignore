@@ -1,0 +1,9 @@
+.env
+data/
+runtime/
+__pycache__/
+*.pyc
+*.bak
+*.tmp
+venv/
+config/zero_avatar.jpg
