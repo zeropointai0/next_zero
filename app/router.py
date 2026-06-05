@@ -307,8 +307,8 @@ def execute_system_action(
         # ── Diagnostik ────────────────────────────────────────────────────────
 
         if action == "run_doctor":
-            from app.zero_doctor import run_doctor
-            return _format_doctor(run_doctor())
+            from app.zero_doctor import diagnose
+            return _format_doctor(diagnose())
 
         if action == "show_status":
             return _format_status(engine)
