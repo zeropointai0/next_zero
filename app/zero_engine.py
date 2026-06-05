@@ -87,6 +87,14 @@ from app.providers import (
     get_provider_model, provider_is_local,
 )
 from app.router import detect_intent, execute_system_action, detect_force_evolution
+
+# ── Gear 4 (valfri) ───────────────────────────────────────────────────────────
+try:
+    from app.zero_gear4 import Gear4Conductor as _Gear4Conductor
+    GEAR4_OK = True
+except ImportError:
+    GEAR4_OK = False
+    _Gear4Conductor = None
 from app.zero_gear import select as gear_select, GearContext, record_latency
 def can_write_memory():
     from app.zero_memory_guard import can_write_memory as _cwm
@@ -586,6 +594,15 @@ class ZeroEngine:
                     save_memory("assistant", result, session_id=self.session_id)
                 return {"response": result, "in_tok": 0, "out_tok": 0, "cost_sek": 0.0}
 
+        # ── Gear 4 — Zero väljer själv ────────────────────────────────────────────
+        # Decomposer avgör alltid om DIRECT/FUNCTION/TASK/ENTITY
+        # DIRECT → faller tillbaka till vanlig engine (snabb konversation)
+        # TASK/FUNCTION/ENTITY → Gear 4 tar över
+        if GEAR4_OK:
+            g4 = self._run_gear4(user_input)
+            if g4 is not None:
+                return g4
+
         # Gear-val
         ctx      = GearContext(channel="chat", last_ollama_latency_ms=self.last_latency * 1000)
         decision = gear_select(user_input, ctx)
@@ -685,6 +702,50 @@ class ZeroEngine:
         if text:
             blocks.append({"type": "text", "text": text})
         return blocks if blocks else [{"type": "text", "text": text}]
+
+    def _run_gear4(self, user_input: str):
+        if not GEAR4_OK or _Gear4Conductor is None:
+            return None
+        self.gear4_active = True
+        thinking_log = []
+        def think(msg):
+            thinking_log.append(msg)
+        try:
+            result = _Gear4Conductor(entity_id="zero").run(
+                goal=user_input, on_thinking=think
+            )
+            dec   = result.decision
+            route = dec.get("route","?") if isinstance(dec,dict) else getattr(dec,"route","?")
+
+            # DIRECT → Zero svarar normalt via provider, ingen Gear4-overhead
+            if route == "DIRECT":
+                return None
+
+            # TASK/FUNCTION/ENTITY → Gear 4 tar över och svarar
+            parts = ["**Gear 4** → " + route]
+            if thinking_log:
+                parts.append("_" + " | ".join(thinking_log[:3]) + "_")
+            art = result.artifact
+            if art:
+                msg = art.get("message") if isinstance(art,dict) else getattr(art,"message","")
+                if msg:
+                    parts.append(msg)
+            ask = dec.get("ask_frank") if isinstance(dec,dict) else getattr(dec,"ask_frank",False)
+            if ask:
+                q = dec.get("frank_question","") if isinstance(dec,dict) else getattr(dec,"frank_question","")
+                if q:
+                    parts.append("**" + q + "**")
+            response = "\n".join(parts)
+            if can_write_memory().get("ok"):
+                save_memory("assistant", response, session_id=self.session_id)
+            return {"response": response, "in_tok": 0, "out_tok": 0,
+                    "cost_sek": 0.0, "provider": "gear4", "gear": 4,
+                    "thinking": thinking_log, "latency": 0.0}
+        except Exception as e:
+            log.error(f"Gear4: {e}")
+            return None
+        finally:
+            self.gear4_active = False
 
     def _reflect_async(self):
         """Auto-reflektion i bakgrundstråd — blockerar inte chatten."""
