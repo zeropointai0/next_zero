@@ -72,6 +72,58 @@ load_dotenv(ZERO_ROOT / ".env")
 SUDO_LOG_FILE = ZERO_ROOT / "data" / "sudo_log.json"
 SUDO_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
 
+# ── Trust Level ───────────────────────────────────────────────────────────────
+# Styrs via .env: ZERO_TRUST_LEVEL=0|1|2|3
+#
+#   0 = SAFE-only automatisk, fråga alltid vid CAUTION+
+#   1 = Kör SAFE + CAUTION automatisk, fråga vid HIGH+   (default)
+#   2 = Kör SAFE + CAUTION + HIGH automatisk, fråga vid CRITICAL
+#   3 = Kör allt utom FORBIDDEN — Frank said "trust mode full"
+#
+# Oavsett trust level:
+#   - FORBIDDEN körs aldrig
+#   - CRITICAL kräver explicit bekräftelse vid nivå 0-2
+#   - Allt loggas alltid till STONE
+
+TRUST_LEVEL = int(os.getenv("ZERO_TRUST_LEVEL", "1"))
+
+def get_trust_level() -> int:
+    """Returnerar aktuell trust level (läser från env varje gång)."""
+    return int(os.getenv("ZERO_TRUST_LEVEL", "1"))
+
+def set_trust_level(level: int) -> str:
+    """
+    Frank säger 'Zero, trust mode full' → level 3
+    Sätts i .env och tas i kraft direkt.
+    """
+    if level not in (0, 1, 2, 3):
+        return f"Ogiltigt trust level: {level}. Använd 0-3."
+    os.environ["ZERO_TRUST_LEVEL"] = str(level)
+    labels = {
+        0: "Försiktig — frågar alltid",
+        1: "Normal — frågar vid HIGH+",
+        2: "Hög — frågar bara vid CRITICAL",
+        3: "Full — kör allt (utom FORBIDDEN), loggar allt",
+    }
+    log.info(f"Trust Level satt till {level}: {labels[level]}")
+    return f"Trust Level: {level} — {labels[level]}"
+
+def should_ask_frank(risk_level: str) -> bool:
+    """
+    Avgör om Frank ska tillfrågas baserat på risk och trust level.
+    Kärnan i autonomi-systemet.
+    """
+    level = get_trust_level()
+    if risk_level == "FORBIDDEN":
+        return False   # Körs aldrig, frågar inte
+    if risk_level == "CRITICAL":
+        return level < 3   # Frågar alltid utom full trust
+    if risk_level == "HIGH":
+        return level < 2
+    if risk_level == "CAUTION":
+        return level < 1
+    return False  # SAFE — kör alltid
+
 # ── Riskmönster ───────────────────────────────────────────────────────────────
 
 # Kommandon som kräver git commit innan körning
@@ -158,6 +210,25 @@ def _append_log(entry: SudoLogEntry) -> None:
 
 # ── Risk-bedömning ────────────────────────────────────────────────────────────
 
+def assess_risk(cmd_or_str) -> Dict[str, Any]:
+    """
+    Publik API för riskbedömning.
+    Accepterar lista eller sträng.
+    Returnerar dict med risk_level, forbidden, reason.
+    """
+    if isinstance(cmd_or_str, str):
+        cmd = cmd_or_str.split()
+    else:
+        cmd = cmd_or_str
+    risk = _assess_risk(cmd)
+    return {
+        "risk_level": risk,
+        "forbidden":  risk == "FORBIDDEN",
+        "requires_approval": should_ask_frank(risk),
+        "reason": f"Kommandot klassas som {risk}",
+    }
+
+
 def _assess_risk(cmd: List[str]) -> str:
     """Bedömer risknivå för ett kommando."""
     cmd_str = " ".join(str(c) for c in cmd).lower()
@@ -235,7 +306,22 @@ def run(
     if risk in ("CAUTION", "CRITICAL"):
         git_backup_done = _git_backup(note or ' '.join(str(c) for c in cmd[:3]))
 
-    # CRITICAL: 3 sekunders paus
+    # CRITICAL + HIGH: kontrollera trust level
+    if should_ask_frank(risk):
+        msg = (
+            f"Operationen kräver godkännande (risk={risk}, "
+            f"trust_level={get_trust_level()}):\n"
+            f"  {' '.join(str(c) for c in cmd[:6])}\n"
+            f"Säg 'Zero, trust mode full' för att köra utan bekräftelse."
+        )
+        log.info(f"sudo: blocked by trust level — {risk}")
+        return {
+            "ok": False, "stdout": "", "stderr": msg,
+            "return_code": -1, "risk": risk,
+            "requires_approval": True,
+        }
+
+    # CRITICAL: 3 sekunders synlig paus (vid trust level 3)
     if risk == "CRITICAL":
         cmd_str = ' '.join(str(c) for c in cmd)
         print(f"\n  [CRITICAL] {cmd_str}")
