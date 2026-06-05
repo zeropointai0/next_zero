@@ -1,35 +1,35 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-zero_gear4.py — ZeroPointAI Gear 4 Ultimate Hybrid v3.2
+zero_gear4.py — ZeroPointAI Gear 4 Final Conductor v4.0
 
 ZERO_MODULE:    autonomy
 ZERO_LAYER:     3
 ZERO_ESSENTIAL: true
-ZERO_ROLE:      Identitetsbevarande orkestrator: Goal → Decompose → Specialize → Guard → Route → Checkpoint
-ZERO_DEPENDS:   foundation.py, zero_decomposer.py, zero_specialization_engine.py, zero_coherence_contract.py, zero_identity_anchor.py, zero_risk_policy.py, zero_task.py, zero_checkpoint.py, zero_entity_wizard.py
+ZERO_ROLE:      Slutlig Gear 4-dirigent: Goal → Decompose → Specialize → Guard → Route → Checkpoint
+ZERO_DEPENDS:   foundation.py, zero_decomposer.py, zero_specialization_engine.py, zero_coherence_contract.py, zero_identity_anchor.py, zero_risk_policy.py, zero_task.py, zero_checkpoint.py, zero_entity_wizard.py, zero_entity_manager.py
 ZERO_USED_BY:   zero_web_server.py, zero_router.py, zero_night.py
 
 Mental Model:
     Gear 4 är dirigenten.
 
-    Den spelar inte alla instrument.
-    Den äger inte all intelligens.
-    Den är inte en task-runner.
+    Gear 4 spelar inte alla instrument.
+    Gear 4 är inte hela orkestern.
+    Gear 4 är inte en task-runner.
+    Gear 4 är inte Entity Wizard.
 
     Gear 4 äger ordningen:
-        1. förstå målet
-        2. välj bästa långsiktiga väg
-        3. kontrollera koherens/risk/identitet
-        4. skapa rätt artefakt
-        5. checkpointa state
-        6. fråga Frank när autonomi inte är förtjänad
+        1. Decompose      — förstå målet
+        2. Specialize     — välj DIRECT/FUNCTION/TASK/ENTITY
+        3. Guard          — coherence + identity + risk före route
+        4. Route          — skapa rätt artefakt/request
+        5. Checkpoint     — spara state-bearing route
+        6. Ask Frank      — när autonomi inte är förtjänad
 
 Non-Negotiables:
-    - ENTITY betyder Draft Entity / Entity Wizard, aldrig ACTIVE agent direkt.
-    - Risk check sker före state-changing route.
-    - Coherence är min(), inte genomsnitt.
-    - Layer 0 är hård grind.
+    - ENTITY betyder Draft Entity eller Entity Wizard, aldrig ACTIVE agent direkt.
+    - Risk Check sker före Act, aldrig efter.
+    - Coherence använder min()/hard gate-principen; Layer 0 kan inte medelvärdesförhandlas bort.
     - Task är state machine, inte agent.
     - Gear 4 ska bli tunnare när subsystemen mognar.
 """
@@ -46,9 +46,9 @@ import uuid
 from dataclasses import asdict, dataclass, field, is_dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
-VERSION = "3.2"
+VERSION = "4.0"
 log = logging.getLogger(__name__)
 
 
@@ -94,7 +94,6 @@ GEAR4_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def zimport(module_name: str):
-    """Import app.<module> when installed, fallback to local module when run directly."""
     try:
         return __import__(f"app.{module_name}", fromlist=["*"])
     except Exception:
@@ -109,7 +108,7 @@ DIRECT = "DIRECT"
 FUNCTION = "FUNCTION"
 TASK = "TASK"
 ENTITY = "ENTITY"
-VALID_ROUTES = {DIRECT, FUNCTION, TASK, ENTITY}
+ROUTES = {DIRECT, FUNCTION, TASK, ENTITY}
 
 CONTINUE = "continue"
 WARN = "warn"
@@ -119,11 +118,11 @@ ABORT = "abort"
 CONFIDENCE_AUTO = 0.90
 CONFIDENCE_ASK = 0.65
 
-STATUS_READY = "READY"
-STATUS_DRAFT = "DRAFT"
-STATUS_BLOCKED = "BLOCKED"
-STATUS_FAILED = "FAILED"
-STATUS_COMPLETE = "COMPLETE"
+READY = "READY"
+DRAFT = "DRAFT"
+BLOCKED = "BLOCKED"
+FAILED = "FAILED"
+COMPLETE = "COMPLETE"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -134,21 +133,22 @@ STATUS_COMPLETE = "COMPLETE"
 class Gear4Config:
     entity_id: str = "zero"
 
-    # Gear 4 defaults to routing/drafting, not doing side-effectful execution.
+    # Gear 4 final default: route and draft, don't silently mutate system.
     dry_run: bool = False
     allow_state_creation: bool = False
 
-    # Entity and function autonomy must be earned.
+    # Autonomy gates.
+    ask_frank_below_confidence: float = CONFIDENCE_AUTO
     always_ask_for_entity: bool = True
     always_ask_for_function_code: bool = True
 
-    # Guardrails.
-    use_coherence_guard: bool = True
-    use_identity_anchor: bool = True
-    use_risk_policy: bool = True
+    # Guards.
+    use_coherence: bool = True
+    use_anchor: bool = True
+    use_risk: bool = True
     checkpoint_state_routes: bool = True
 
-    # DIRECT should normally be handed back to engine/chat layer.
+    # DIRECT belongs to engine/chat layer.
     execute_direct: bool = False
 
 
@@ -159,23 +159,25 @@ class Gear4Decision:
     reason: str = ""
     next_action: str = "answer_directly"
     ask_frank: bool = True
+    frank_question: str = ""
 
     reasons: List[str] = field(default_factory=list)
     alternatives: List[str] = field(default_factory=list)
     suggested_steps: List[str] = field(default_factory=list)
 
+    function_name: str = ""
+    function_purpose: str = ""
+
     entity_name: str = ""
     entity_domain: str = ""
     entity_purpose: str = ""
-
-    function_name: str = ""
-    function_purpose: str = ""
+    entity_draft: Dict[str, Any] = field(default_factory=dict)
 
     raw: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
-class GuardResult:
+class Gear4Guard:
     allowed: bool = True
     action: str = CONTINUE
     risk_level: str = "SAFE"
@@ -193,7 +195,7 @@ class GuardResult:
 class Gear4Artifact:
     kind: str
     title: str
-    status: str = STATUS_READY
+    status: str = READY
     message: str = ""
     data: Dict[str, Any] = field(default_factory=dict)
 
@@ -204,7 +206,7 @@ class Gear4Result:
     version: str = VERSION
     entity_id: str = "zero"
     goal: str = ""
-    status: str = STATUS_READY
+    status: str = READY
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
     decomposition: Dict[str, Any] = field(default_factory=dict)
@@ -219,7 +221,7 @@ class Gear4Result:
     errors: List[str] = field(default_factory=list)
 
     def ok(self) -> bool:
-        return self.status not in {STATUS_FAILED, STATUS_BLOCKED}
+        return self.status not in {FAILED, BLOCKED}
 
     def to_dict(self) -> Dict[str, Any]:
         data = asdict(self)
@@ -323,23 +325,27 @@ def first_nonempty(*values: Any) -> str:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Gear 4 conductor
+# Gear 4 Final Conductor
 # ─────────────────────────────────────────────────────────────────────────────
 
 class Gear4Conductor:
     """
-    Ultimate hybrid Gear 4.
+    Final decision:
+        Gear 4 is a conductor with stable contracts and minimal ownership.
 
-    Keeps:
-        - Claude's loop intuition: decompose → anchor/risk → act → checkpoint → learn.
-        - GPT's normalization/artifact/result contracts.
-        - Grok's strict conductor purity and pre/post guard ordering.
+    Owns:
+        - pipeline order
+        - decision normalization
+        - guard sequence
+        - route artifacts
+        - checkpoint/persist after state-bearing routes
 
-    Avoids:
-        - putting provider/tool execution inside Gear 4
-        - creating active entities directly
-        - treating tasks as agents
-        - proceeding through unknown risk silently
+    Does not own:
+        - deep decomposition
+        - specialization scoring
+        - provider execution
+        - task execution loop
+        - entity design dialogue
     """
 
     def __init__(self, config: Optional[Gear4Config] = None):
@@ -347,8 +353,6 @@ class Gear4Conductor:
         self.entity_id = self.config.entity_id
         self._running = False
         self._interrupt = False
-
-    # ── Public controls ──────────────────────────────────────────────────────
 
     @property
     def is_running(self) -> bool:
@@ -363,7 +367,7 @@ class Gear4Conductor:
         result = Gear4Result(entity_id=self.entity_id, goal=goal)
 
         if not goal:
-            result.status = STATUS_FAILED
+            result.status = FAILED
             result.errors.append("Empty goal.")
             return result
 
@@ -371,54 +375,46 @@ class Gear4Conductor:
         self._interrupt = False
 
         try:
-            # 1. Understand.
             decomposition = self.decompose(goal, context)
             result.decomposition = plain(decomposition)
 
-            # 2. Decide route.
             decision = self.specialize(decomposition, context)
             result.decision = plain(decision)
 
-            # 3. Guard before any state-changing route.
             guard = self.guard(goal, decomposition, decision)
             result.guard = plain(guard)
             result.warnings.extend(guard.warnings)
 
             if not guard.allowed:
-                result.status = STATUS_BLOCKED
+                result.status = BLOCKED
                 result.ask_frank = True
                 result.frank_question = guard.reason or "Gear 4 guard stoppade routingen. Vill du granska?"
                 self.persist(result)
                 return result
 
-            # 4. Route to artifact/request.
             artifact = self.route(goal, context, decomposition, decision)
             result.artifact = artifact
             result.status = artifact.status
 
-            # 5. Ask Frank when autonomy is not earned.
-            result.ask_frank = bool(decision.ask_frank or artifact.status == STATUS_DRAFT)
+            result.ask_frank = bool(decision.ask_frank or artifact.status == DRAFT)
             if result.ask_frank:
-                result.frank_question = self.make_frank_question(decision, artifact)
+                result.frank_question = decision.frank_question or self.make_frank_question(decision, artifact)
 
-            # 6. Checkpoint state-bearing routes.
             if self.config.checkpoint_state_routes and artifact.kind != "direct":
                 result.checkpoint_id = self.checkpoint(result)
 
-            # 7. Medium anchor after route, if state-bearing.
-            if artifact.kind != "direct":
-                post_guard = self.post_route_anchor(goal, decision, artifact)
-                result.warnings.extend(post_guard.warnings)
-                if not post_guard.allowed:
-                    result.status = STATUS_BLOCKED
-                    result.ask_frank = True
-                    result.frank_question = post_guard.reason or "Post-route anchor pausade Gear 4."
+            post_guard = self.post_route_anchor(goal, decision, artifact)
+            result.warnings.extend(post_guard.warnings)
+            if not post_guard.allowed:
+                result.status = BLOCKED
+                result.ask_frank = True
+                result.frank_question = post_guard.reason or "Post-route identity anchor pausade Gear 4."
 
             self.persist(result)
             return result
 
         except Exception as exc:
-            result.status = STATUS_FAILED
+            result.status = FAILED
             result.errors.append(f"{type(exc).__name__}: {exc}")
             result.errors.append(traceback.format_exc(limit=8))
             self.persist(result)
@@ -428,56 +424,57 @@ class Gear4Conductor:
             self._running = False
 
     # ────────────────────────────────────────────────────────────────────────
-    # Step 1 — Decompose
+    # 1. Decompose
     # ────────────────────────────────────────────────────────────────────────
 
     def decompose(self, goal: str, context: Optional[str]) -> Any:
         try:
             mod = zimport("zero_decomposer")
-
             fn = getattr(mod, "decompose", None)
             if callable(fn):
-                for args in (
+                for call in (
                     lambda: fn(goal, context=context, entity_id=self.entity_id),
                     lambda: fn(goal, context, self.entity_id),
                     lambda: fn(goal, context=context),
                     lambda: fn(goal),
                 ):
                     try:
-                        return args()
+                        return call()
                     except TypeError:
                         continue
 
             cls = getattr(mod, "GoalDecomposer", None)
             if cls:
-                inst = cls()
-                analyze = getattr(inst, "analyze", None)
+                obj = cls()
+                analyze = getattr(obj, "analyze", None)
                 if callable(analyze):
-                    return analyze(goal, context=context, entity_id=self.entity_id)
-
+                    try:
+                        return analyze(goal, context=context, entity_id=self.entity_id)
+                    except TypeError:
+                        return analyze(goal, context)
         except Exception as exc:
-            log.warning("zero_decomposer unavailable, fallback used: %s", exc)
+            log.warning("zero_decomposer unavailable; fallback used: %s", exc)
 
         return self.fallback_decomposition(goal, context)
 
     # ────────────────────────────────────────────────────────────────────────
-    # Step 2 — Specialize
+    # 2. Specialize
     # ────────────────────────────────────────────────────────────────────────
 
     def specialize(self, decomposition: Any, context: Optional[str]) -> Gear4Decision:
         raw = None
+
         try:
             mod = zimport("zero_specialization_engine")
-
-            fn = getattr(mod, "evaluate", None)
-            if callable(fn):
-                for args in (
-                    lambda: fn(decomposition, entity_id=self.entity_id, context=context),
-                    lambda: fn(decomposition, entity_id=self.entity_id),
-                    lambda: fn(decomposition),
+            evaluate = getattr(mod, "evaluate", None)
+            if callable(evaluate):
+                for call in (
+                    lambda: evaluate(decomposition, entity_id=self.entity_id, context=context),
+                    lambda: evaluate(decomposition, entity_id=self.entity_id),
+                    lambda: evaluate(decomposition),
                 ):
                     try:
-                        raw = args()
+                        raw = call()
                         break
                     except TypeError:
                         continue
@@ -488,7 +485,7 @@ class Gear4Conductor:
                     raw = cls().evaluate(decomposition, entity_id=self.entity_id, context=context)
 
         except Exception as exc:
-            log.warning("zero_specialization_engine unavailable, fallback used: %s", exc)
+            log.warning("zero_specialization_engine unavailable; fallback used: %s", exc)
 
         if raw is None:
             raw = self.fallback_recommendation(decomposition)
@@ -497,22 +494,42 @@ class Gear4Conductor:
 
     def normalize_decision(self, raw: Any, decomposition: Any) -> Gear4Decision:
         route = str(getv(raw, "path", getv(raw, "route", DIRECT)) or DIRECT).upper()
-        if route not in VALID_ROUTES:
+        if route not in ROUTES:
             route = DIRECT
 
         confidence = max(0.0, min(1.0, safe_float(getv(raw, "confidence", 0.75), 0.75)))
 
         ask_frank = bool(getv(raw, "ask_frank", False))
-        if confidence < CONFIDENCE_AUTO:
+        if confidence < self.config.ask_frank_below_confidence:
             ask_frank = True
         if route == ENTITY and self.config.always_ask_for_entity:
             ask_frank = True
         if route == FUNCTION and self.config.always_ask_for_function_code:
             ask_frank = True
 
-        domain = first_nonempty(getv(raw, "entity_domain", ""), getv(decomposition, "domain", ""))
+        domain = first_nonempty(getv(raw, "entity_domain", ""), getv(raw, "domain", ""), getv(decomposition, "domain", ""))
 
-        return Gear4Decision(
+        entity_name = first_nonempty(getv(raw, "entity_name", ""), self.suggest_entity_name(domain))
+        entity_purpose = first_nonempty(getv(raw, "entity_purpose", ""), getv(raw, "purpose", ""), f"Specialist inom {domain}" if domain else "")
+
+        entity_draft = {}
+        if route == ENTITY:
+            entity_draft = {
+                "name": entity_name,
+                "domain": domain or "general",
+                "purpose": entity_purpose,
+                "status": "DRAFT",
+                "confidence": confidence,
+                "source": "Gear4",
+                "source_goal": first_nonempty(getv(decomposition, "raw_goal", ""), getv(decomposition, "core_problem", "")),
+                "non_negotiables": [
+                    "Starts as DRAFT.",
+                    "Shares Layer 0 with Zero.",
+                    "No ACTIVE autonomy without Frank approval.",
+                ],
+            }
+
+        decision = Gear4Decision(
             route=route,
             confidence=confidence,
             reason=first_nonempty(getv(raw, "reason", ""), getv(raw, "thinking", ""), self.default_reason(route)),
@@ -521,42 +538,43 @@ class Gear4Conductor:
             reasons=as_list(getv(raw, "reasons", [])),
             alternatives=as_list(getv(raw, "alternatives", [])),
             suggested_steps=as_list(getv(raw, "suggested_steps", [])) or self.plan_from_decomposition(decomposition),
-            entity_name=first_nonempty(getv(raw, "entity_name", ""), self.suggest_entity_name(domain)) if route == ENTITY else "",
-            entity_domain=domain if route == ENTITY else "",
-            entity_purpose=first_nonempty(getv(raw, "entity_purpose", ""), f"Specialist inom {domain}") if route == ENTITY else "",
             function_name=first_nonempty(getv(raw, "function_name", ""), self.suggest_function_name(decomposition)) if route == FUNCTION else "",
             function_purpose=first_nonempty(getv(raw, "function_purpose", ""), getv(decomposition, "intent", ""), getv(decomposition, "core_problem", "")) if route == FUNCTION else "",
+            entity_name=entity_name if route == ENTITY else "",
+            entity_domain=domain if route == ENTITY else "",
+            entity_purpose=entity_purpose if route == ENTITY else "",
+            entity_draft=entity_draft,
             raw=plain(raw),
         )
+        decision.frank_question = self.make_frank_question_for_decision(decision)
+        return decision
 
     # ────────────────────────────────────────────────────────────────────────
-    # Step 3 — Guards
+    # 3. Guards
     # ────────────────────────────────────────────────────────────────────────
 
-    def guard(self, goal: str, decomposition: Any, decision: Gear4Decision) -> GuardResult:
+    def guard(self, goal: str, decomposition: Any, decision: Gear4Decision) -> Gear4Guard:
         warnings: List[str] = []
 
-        # A. Coherence: min-based contract where available.
         coherence = self.coherence_guard(goal, decomposition, decision)
         warnings.extend(coherence.warnings)
         if not coherence.allowed:
+            coherence.warnings = warnings
             return coherence
 
-        # B. Identity anchor: quick pre-route anchor.
         anchor = self.identity_anchor(goal, decision, mode="quick", step=0)
         warnings.extend(anchor.warnings)
         if not anchor.allowed:
             anchor.warnings = warnings
             return anchor
 
-        # C. Risk: before Act.
         risk = self.risk_guard(goal, decision)
         warnings.extend(risk.warnings)
         if not risk.allowed:
             risk.warnings = warnings
             return risk
 
-        return GuardResult(
+        return Gear4Guard(
             allowed=True,
             action=CONTINUE,
             risk_level=risk.risk_level,
@@ -567,22 +585,19 @@ class Gear4Conductor:
             warnings=warnings,
         )
 
-    def coherence_guard(self, goal: str, decomposition: Any, decision: Gear4Decision) -> GuardResult:
-        if not self.config.use_coherence_guard:
-            return GuardResult()
+    def coherence_guard(self, goal: str, decomposition: Any, decision: Gear4Decision) -> Gear4Guard:
+        if not self.config.use_coherence:
+            return Gear4Guard()
 
         state = f"Gear4 goal: {goal}"
         action = f"Route as {decision.route}"
 
         try:
             mod = zimport("zero_coherence_contract")
-
-            # Prefer quick_coherence because identity_anchor imports it from this module.
             for name in ("quick_coherence", "measure_coherence", "check_coherence", "medium_coherence"):
                 fn = getattr(mod, name, None)
                 if not callable(fn):
                     continue
-
                 try:
                     result = fn(state, action, goal, entity_id=self.entity_id)
                 except TypeError:
@@ -590,30 +605,35 @@ class Gear4Conductor:
                         result = fn(current_state=state, current_action=action, task_goal=goal, entity_id=self.entity_id)
                     except TypeError:
                         result = fn(state)
-
-                return self.coherence_result_to_guard(result)
-
+                return self.coherence_to_guard(result)
         except Exception as exc:
-            return GuardResult(
+            return Gear4Guard(
                 allowed=True,
                 warnings=[f"Coherence guard degraded: {type(exc).__name__}: {exc}"],
             )
 
-        return GuardResult()
+        return Gear4Guard()
 
-    def coherence_result_to_guard(self, result: Any) -> GuardResult:
+    def coherence_to_guard(self, result: Any) -> Gear4Guard:
         action = str(getv(result, "action", CONTINUE) or CONTINUE).lower()
-        score = safe_float(getv(result, "coherence_score", getv(result, "score", 1.0)), 1.0)
+
         layer0 = safe_float(getv(result, "layer0_alignment", 1.0), 1.0)
         mission = safe_float(getv(result, "mission_alignment", 1.0), 1.0)
         entity = safe_float(getv(result, "entity_alignment", 1.0), 1.0)
+
+        reported = safe_float(getv(result, "coherence_score", getv(result, "score", 1.0)), 1.0)
+        # Gear 4 enforces the min() interpretation even if an older module reports only a general score.
+        score = min(reported, layer0, mission, entity)
+
         reason = str(getv(result, "reason", "") or "")
 
-        allowed = action not in {PAUSE, ABORT} and layer0 >= 0.75
+        allowed = action not in {PAUSE, ABORT} and layer0 >= 0.75 and score >= 0.50
         if layer0 < 0.75 and not reason:
             reason = "Layer 0 hard gate failed."
+        elif score < 0.50 and not reason:
+            reason = "Coherence minimum fell below allowed threshold."
 
-        return GuardResult(
+        return Gear4Guard(
             allowed=allowed,
             action=action,
             risk_level="SAFE",
@@ -624,9 +644,9 @@ class Gear4Conductor:
             reason=reason,
         )
 
-    def identity_anchor(self, goal: str, decision: Gear4Decision, mode: str, step: int) -> GuardResult:
-        if not self.config.use_identity_anchor:
-            return GuardResult()
+    def identity_anchor(self, goal: str, decision: Gear4Decision, mode: str, step: int) -> Gear4Guard:
+        if not self.config.use_anchor:
+            return Gear4Guard()
 
         try:
             mod = zimport("zero_identity_anchor")
@@ -649,37 +669,24 @@ class Gear4Conductor:
                         current_state=f"Gear4 routing: {goal}",
                         current_action=f"Route as {decision.route}",
                         task_goal=goal,
-                        entity_id=self.entity_id,
                         risk_level=self.route_risk(decision),
+                        entity_id=self.entity_id,
                     )
-                return self.anchor_result_to_guard(result)
-
-            cls = getattr(mod, "IdentityAnchor", None)
-            if cls:
-                anchor = cls(entity_id=self.entity_id)
-                result = anchor.check(
-                    step=step,
-                    current_state=f"Gear4 routing: {goal}",
-                    current_action=f"Route as {decision.route}",
-                    task_goal=goal,
-                    risk_level=self.route_risk(decision),
-                    force_level=mode,
-                )
-                return self.anchor_result_to_guard(result)
+                return self.anchor_to_guard(result)
 
         except Exception as exc:
-            return GuardResult(
+            return Gear4Guard(
                 allowed=True,
                 warnings=[f"Identity anchor degraded: {type(exc).__name__}: {exc}"],
             )
 
-        return GuardResult()
+        return Gear4Guard()
 
-    def anchor_result_to_guard(self, result: Any) -> GuardResult:
+    def anchor_to_guard(self, result: Any) -> Gear4Guard:
         action = str(getv(result, "action", CONTINUE) or CONTINUE).lower()
-        score = safe_float(getv(result, "coherence_score", 1.0), 1.0)
+        score = safe_float(getv(result, "coherence_score", getv(result, "score", 1.0)), 1.0)
         reason = str(getv(result, "reason", "") or "")
-        return GuardResult(
+        return Gear4Guard(
             allowed=action not in {PAUSE, ABORT},
             action=action,
             coherence_score=score,
@@ -687,61 +694,71 @@ class Gear4Conductor:
             warnings=[] if action == CONTINUE else [reason or f"Anchor action: {action}"],
         )
 
-    def risk_guard(self, goal: str, decision: Gear4Decision) -> GuardResult:
-        if not self.config.use_risk_policy:
-            return GuardResult(risk_level=self.route_risk(decision))
-
+    def risk_guard(self, goal: str, decision: Gear4Decision) -> Gear4Guard:
         risk_level = self.route_risk(decision)
+        if not self.config.use_risk:
+            return Gear4Guard(risk_level=risk_level)
 
         try:
             mod = zimport("zero_risk_policy")
+            operation = f"Gear4 route {decision.route}: {goal[:160]}"
 
             fn = getattr(mod, "risk_gate", None)
             if callable(fn):
                 allowed, assessment = fn(
-                    operation=f"Gear4 route {decision.route}: {goal[:160]}",
+                    operation=operation,
                     operation_type="gear4_route",
+                    operation_id=f"gear4:{uuid.uuid4().hex[:8]}",
                     entity_id=self.entity_id,
                 )
                 level = str(getv(assessment, "risk_level", risk_level) or risk_level)
                 reason = str(getv(assessment, "reason", "") or "")
-                return GuardResult(allowed=bool(allowed), action=CONTINUE if allowed else PAUSE, risk_level=level, reason=reason)
+                return Gear4Guard(
+                    allowed=bool(allowed),
+                    action=CONTINUE if allowed else PAUSE,
+                    risk_level=level,
+                    reason=reason,
+                )
 
             fn = getattr(mod, "assess_risk", None)
             if callable(fn):
-                assessment = fn(f"Gear4 route {decision.route}: {goal[:160]}", "gear4_route")
+                assessment = fn(operation, "gear4_route")
                 level = str(getv(assessment, "risk_level", risk_level) or risk_level)
                 forbidden = bool(getv(assessment, "forbidden", False))
                 requires_approval = bool(getv(assessment, "requires_approval", False))
                 reason = str(getv(assessment, "reason", "") or "")
                 allowed = not forbidden and not (requires_approval and decision.confidence < CONFIDENCE_AUTO)
-                return GuardResult(allowed=allowed, action=CONTINUE if allowed else PAUSE, risk_level=level, reason=reason)
+                return Gear4Guard(
+                    allowed=allowed,
+                    action=CONTINUE if allowed else PAUSE,
+                    risk_level=level,
+                    reason=reason,
+                )
 
         except Exception as exc:
-            # Conservative around ENTITY when risk system is unavailable.
             if decision.route == ENTITY:
-                return GuardResult(
+                return Gear4Guard(
                     allowed=False,
                     action=PAUSE,
                     risk_level="CAUTION",
                     reason="Risk policy unavailable for ENTITY route.",
                     warnings=[f"Risk policy degraded: {type(exc).__name__}: {exc}"],
                 )
-            return GuardResult(
+            return Gear4Guard(
                 allowed=True,
                 risk_level=risk_level,
                 warnings=[f"Risk policy degraded: {type(exc).__name__}: {exc}"],
             )
 
-        return GuardResult(risk_level=risk_level)
+        return Gear4Guard(risk_level=risk_level)
 
-    def post_route_anchor(self, goal: str, decision: Gear4Decision, artifact: Gear4Artifact) -> GuardResult:
+    def post_route_anchor(self, goal: str, decision: Gear4Decision, artifact: Gear4Artifact) -> Gear4Guard:
         if artifact.kind == "direct":
-            return GuardResult()
+            return Gear4Guard()
         return self.identity_anchor(goal, decision, mode="medium", step=1)
 
     # ────────────────────────────────────────────────────────────────────────
-    # Step 4 — Route adapters
+    # 4. Route
     # ────────────────────────────────────────────────────────────────────────
 
     def route(self, goal: str, context: Optional[str], decomposition: Any, decision: Gear4Decision) -> Gear4Artifact:
@@ -749,7 +766,7 @@ class Gear4Conductor:
             return Gear4Artifact(
                 kind="interrupt",
                 title="INTERRUPTED",
-                status=STATUS_BLOCKED,
+                status=BLOCKED,
                 message="Gear 4 avbröts innan routing.",
             )
 
@@ -765,16 +782,15 @@ class Gear4Conductor:
         return Gear4Artifact(
             kind="unknown",
             title="UNKNOWN ROUTE",
-            status=STATUS_FAILED,
+            status=FAILED,
             message=f"Unknown route: {decision.route}",
         )
 
     def route_direct(self, goal: str, decomposition: Any, decision: Gear4Decision) -> Gear4Artifact:
-        # Direct is explicitly handed back to the chat/engine layer.
         return Gear4Artifact(
             kind="direct",
             title="DIRECT — svara direkt",
-            status=STATUS_COMPLETE if self.config.execute_direct else STATUS_READY,
+            status=COMPLETE if self.config.execute_direct else READY,
             message="Gear 4 bedömer att målet ska lösas direkt av normal chat/engine utan extra autonomi.",
             data={
                 "next_action": "answer_directly",
@@ -792,11 +808,10 @@ class Gear4Conductor:
             "test_required": True,
             "suggested_steps": decision.suggested_steps,
         }
-
         return Gear4Artifact(
             kind="function",
             title=f"FUNCTION — {brief['function_name']}",
-            status=STATUS_DRAFT,
+            status=DRAFT,
             message="Gear 4 rekommenderar återanvändbar funktion/modul. Den skriver inte kod förrän briefet är godkänt.",
             data={"function_brief": brief},
         )
@@ -825,13 +840,12 @@ class Gear4Conductor:
                     if manager_cls:
                         manager = manager_cls(entity_id=self.entity_id)
                         task_obj = manager.create_task(goal=goal, plan=plan, risk_level=self.route_risk(decision))
-
                 task_id = str(getv(task_obj, "task_id", "") or "")
             except Exception as exc:
                 return Gear4Artifact(
                     kind="task",
                     title="TASK — creation failed",
-                    status=STATUS_FAILED,
+                    status=FAILED,
                     message=f"Task creation failed: {type(exc).__name__}: {exc}",
                     data={"task_request": task_request},
                 )
@@ -839,7 +853,7 @@ class Gear4Conductor:
         return Gear4Artifact(
             kind="task",
             title="TASK — strukturerat uppdrag",
-            status=STATUS_READY if task_id else STATUS_DRAFT,
+            status=READY if task_id else DRAFT,
             message="Gear 4 rekommenderar ett finite task med state, checkpoints och review.",
             data={
                 "task_id": task_id,
@@ -850,14 +864,14 @@ class Gear4Conductor:
         )
 
     def route_entity(self, goal: str, decomposition: Any, decision: Gear4Decision) -> Gear4Artifact:
-        draft = {
+        draft = decision.entity_draft or {
             "name": decision.entity_name or self.suggest_entity_name(decision.entity_domain),
             "domain": decision.entity_domain or str(getv(decomposition, "domain", "general") or "general"),
             "purpose": decision.entity_purpose or goal,
             "status": "DRAFT",
-            "source_goal": goal,
             "confidence": decision.confidence,
-            "created_by": "Gear4",
+            "source": "Gear4",
+            "source_goal": goal,
             "non_negotiables": [
                 "Starts as DRAFT.",
                 "Shares Layer 0 with Zero.",
@@ -875,11 +889,10 @@ class Gear4Conductor:
             ],
         }
 
-        # Intentionally do not call Entity Manager here. Entity Wizard owns the design conversation.
         return Gear4Artifact(
             kind="entity",
-            title=f"ENTITY — Draft: {draft['name']}",
-            status=STATUS_DRAFT,
+            title=f"ENTITY — Draft: {draft.get('name', 'Specialist')}",
+            status=DRAFT,
             message="Gear 4 rekommenderar Draft Entity / Entity Wizard. Detta skapar inte en aktiv agent.",
             data={
                 "draft_entity": draft,
@@ -888,7 +901,7 @@ class Gear4Conductor:
         )
 
     # ────────────────────────────────────────────────────────────────────────
-    # Step 5 — Checkpoint / persistence
+    # 5. Checkpoint / persist
     # ────────────────────────────────────────────────────────────────────────
 
     def checkpoint(self, result: Gear4Result) -> str:
@@ -928,21 +941,21 @@ class Gear4Conductor:
             pass
 
     # ────────────────────────────────────────────────────────────────────────
-    # Fallbacks and small helpers
+    # Fallbacks/helpers
     # ────────────────────────────────────────────────────────────────────────
 
     def fallback_decomposition(self, goal: str, context: Optional[str]) -> Dict[str, Any]:
         text = f"{goal}\n{context or ''}".lower()
 
         domain = "general"
-        if any(w in text for w in ("flipper", "pinball", "stern", "williams", "bally", "gottlieb")):
+        if any(w in text for w in ("flipper", "pinball", "stern", "williams", "bally", "gottlieb", "solenoid")):
             domain = "pinball"
         elif any(w in text for w in ("trading", "trade", "market", "tradingview")):
             domain = "trading"
         elif any(w in text for w in ("python", "kod", "script", "modul", "api", "server", "funktion")):
             domain = "programming"
 
-        recurring = any(w in text for w in ("återkommande", "varje", "långsiktig", "över tid", "specialist", "entity", "entitet"))
+        recurring = any(w in text for w in ("återkommande", "varje", "långsiktig", "över tid", "specialist", "entity", "entitet", "hålla koll"))
         research = any(w in text for w in ("analysera", "research", "undersök", "jämför", "gå igenom"))
         learning = any(w in text for w in ("lära", "studera", "förbättras", "över tid", "mentor"))
 
@@ -1059,14 +1072,19 @@ class Gear4Conductor:
         slug = slug[:40] or "helper"
         return f"{domain}_{slug}"
 
-    def make_frank_question(self, decision: Gear4Decision, artifact: Gear4Artifact) -> str:
+    def make_frank_question_for_decision(self, decision: Gear4Decision) -> str:
         if decision.route == ENTITY:
             return f"Jag rekommenderar Draft Entity: **{decision.entity_name or 'specialist'}**. Vill du starta Entity Wizard och designa den tillsammans?"
         if decision.route == FUNCTION:
-            return "Jag rekommenderar en återanvändbar funktion/modul. Vill du godkänna briefet och skriva implementation?"
+            return "Jag rekommenderar en återanvändbar funktion/modul. Vill du godkänna briefet innan kod skrivs?"
         if decision.route == TASK:
             return "Jag rekommenderar ett strukturerat task. Vill du godkänna plan/state creation?"
+        if decision.confidence < CONFIDENCE_AUTO:
+            return "Jag är inte helt säker på routingbeslutet. Vill du granska innan jag fortsätter?"
         return ""
+
+    def make_frank_question(self, decision: Gear4Decision, artifact: Gear4Artifact) -> str:
+        return decision.frank_question or self.make_frank_question_for_decision(decision)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1118,7 +1136,7 @@ def status(entity_id: str = "zero") -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=f"ZeroPointAI Gear 4 Ultimate Hybrid v{VERSION}")
+    parser = argparse.ArgumentParser(description=f"ZeroPointAI Gear 4 Final Conductor v{VERSION}")
     parser.add_argument("--goal", help="Goal to route through Gear 4")
     parser.add_argument("--context", default=None)
     parser.add_argument("--entity", default="zero")
