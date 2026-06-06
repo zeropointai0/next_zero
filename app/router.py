@@ -125,7 +125,14 @@ INTENT_PATTERNS: List[Tuple[str, str, str]] = [
      r"hur mår server|hur mår servern|snabb.?status|quick.?status|system.?hälsa)\b",
      "hw_system_overview", "hardware_intent"),
 
-    # ── Trust mode ────────────────────────────────────────────────────────────
+    # ── Kodgranskning ────────────────────────────────────────────────
+    (r"(granska alla moduler|review all modules|alla moduler|kod.?analys|förbättringsförslag)",
+     "review_all_modules", "code_action"),
+
+    (r"(granska|review|förbättra|debug) +([\w_]+(?:\.py)?)",
+     "review_module", "code_action"),
+
+        # ── Trust mode ────────────────────────────────────────────────────────────
     (r"\b(trust mode full|full trust|lita på dig själv|kör utan att fråga|"
      r"high autonomy|hög autonomi|zero trust full)\b",
      "set_trust_full", "system_action"),
@@ -133,6 +140,24 @@ INTENT_PATTERNS: List[Tuple[str, str, str]] = [
     (r"\b(trust mode normal|normal trust|fråga som vanligt|"
      r"återställ trust|normal autonomi)\b",
      "set_trust_normal", "system_action"),
+
+    # ── Filläsning — Zero läser faktiska filer, gissar ALDRIG ──────────────
+    # "läs router.py", "öppna bashar.pdf", "visa innehållet i docs/books/X.pdf"
+    (r"(läs|read|öppna|studera|visa innehållet i|show me).+\.(pdf|txt|py|md|"
+     r"docx|xlsx|csv|json|yaml|log|sh|env)",
+     "read_file", "file_action"),
+
+    (r"(läs|studera|read).+(i |från |in )?(docs?|books?|app|config|data)/",
+     "read_file", "file_action"),
+
+    # ── Lista filer i katalog ─────────────────────────────────────────────────
+    (r"(lista|list|visa|show).+(filer|files).+(i |i mapp |in )?(docs?|books?|"
+     r"app|config|data|/opt)",
+     "list_files", "file_action"),
+
+    (r"vilka (filer|böcker|dokument|pdfer) (finns|har du|ligger).+(docs?|books?|"
+     r"app|/opt)",
+     "list_files", "file_action"),
 
     # ── Godtyckliga kommandon — Frank kör vad som helst ──────────────────────
     # "kör nvidia-smi", "run ls /opt", "exec df -h"
@@ -323,6 +348,14 @@ def execute_system_action(
 
         # ── Systemkarta ───────────────────────────────────────────────────────
 
+        # ── Kodgranskning ────────────────────────────────────────────────────
+
+        if action == "review_module":
+            return _review_module(intent_original)
+
+        if action == "review_all_modules":
+            return _review_all_modules()
+
         # ── Trust mode ───────────────────────────────────────────────────────
 
         if action == "set_trust_full":
@@ -338,6 +371,14 @@ def execute_system_action(
                 return trust_mode_normal()
             except ImportError:
                 return "zero_sudo saknas."
+
+        # ── Filläsning ────────────────────────────────────────────────────────
+
+        if action == "read_file":
+            return _read_file_intent(intent_original)
+
+        if action == "list_files":
+            return _list_files_intent(intent_original)
 
         # ── Layer 2: System Intent ────────────────────────────────────────────
 
@@ -413,6 +454,386 @@ def execute_system_action(
 
 
 # ── Kommandoexekvering ────────────────────────────────────────────────────────
+
+def _extract_module_name(text: str) -> str:
+    """Extraherar modulnamn från input som 'granska router.py' eller 'förbättra zero_engine'."""
+    import re
+    # Matcha .py-fil explicit
+    m = re.search(r"([\w_]+\.py)", text.lower())
+    if m:
+        return m.group(1)
+    # Matcha sista ordet som modulnamn
+    words = text.strip().split()
+    if words:
+        name = words[-1].strip(".,!?")
+        if not name.endswith(".py"):
+            name += ".py"
+        return name
+    return ""
+
+
+def _review_module(goal: str) -> str:
+    """
+    Zero läser en .py-fil och föreslår förbättringar via LLM.
+    Frank bestämmer om Zero ska implementera förslagen.
+    """
+    module_name = _extract_module_name(goal)
+    if not module_name:
+        return (
+            "Vilket modul vill du att jag granskar? "
+            "Exempel: 'granska router.py' eller 'förbättra zero_engine.py'"
+        )
+
+    # Hitta filen
+    from app.foundation import APP_DIR
+    module_path = APP_DIR / module_name
+    if not module_path.exists():
+        # Försök utan .py
+        matches = list(APP_DIR.glob(f"*{module_name.replace('.py','')}*"))
+        if matches:
+            module_path = matches[0]
+            module_name = matches[0].name
+        else:
+            return f"Hittar inte '{module_name}' i app/. Kör 'scanna' för att se tillgängliga moduler."
+
+    # Läs filen
+    try:
+        from app.zero_sudo import run as sudo_run
+        result = sudo_run(["cat", str(module_path)], note=f"review:{module_name}")
+        if not result.get("ok"):
+            return f"Kunde inte läsa {module_name}: {result.get('stderr','')}"
+        code = result.get("stdout", "")
+    except Exception as e:
+        return f"Fel vid läsning av {module_name}: {e}"
+
+    if not code:
+        return f"{module_name} verkar vara tom."
+
+    line_count = len(code.splitlines())
+
+    # Skicka till LLM för analys
+    try:
+        from app.zero_engine import get_engine_response
+        prompt = (
+            f"Granska denna Python-modul från ZeroPointAI: {module_name}\n"
+            f"({line_count} rader)\n\n"
+            f"```python\n{code[:6000]}\n```\n\n"
+            "Ge konkreta förbättringsförslag med fokus på:\n"
+            "1. Buggar eller felhantering som saknas\n"
+            "2. Arkitekturella problem (ansvar, koppling)\n"
+            "3. Prestanda eller robusthet\n"
+            "4. Koherans med ZeroPointAI:s filosofi (Layer 0)\n\n"
+            "Var specifik — ange radnummer när möjligt.\n"
+            "Avsluta med: 'Vill du att jag implementerar något av detta?'"
+        )
+        analysis = get_engine_response(prompt, gear_level=2)
+        return (
+            f"**Kodgranskning: {module_name}** ({line_count} rader)\n\n"
+            f"{analysis}"
+        )
+    except Exception as e:
+        # Fallback — enkel statisk analys
+        return _static_analysis(module_name, code)
+
+
+def _static_analysis(module_name: str, code: str) -> str:
+    """Enkel statisk analys utan LLM — alltid tillgänglig."""
+    lines      = code.splitlines()
+    line_count = len(lines)
+    findings   = []
+
+    # Kolla efter shell=True
+    if "shell=True" in code:
+        for i, line in enumerate(lines, 1):
+            if "shell=True" in line:
+                findings.append(f"  Rad {i}: shell=True — säkerhetsrisk")
+
+    # Kolla efter hårdkodade sökvägar
+    import re
+    for i, line in enumerate(lines, 1):
+        if re.search(r'"/opt/|"/home/|"/etc/', line) and "ZERO_ROOT" not in line:
+                findings.append(f"  Rad {i}: Hårdkodad sökväg — använd ZERO_ROOT")
+
+    # Kolla efter breda except
+    for i, line in enumerate(lines, 1):
+        if re.match(r"\s+except\s*:", line) or re.match(r"\s+except Exception\s*:", line):
+            findings.append(f"  Rad {i}: Bred except — kan dölja fel")
+
+    # Kolla storlek
+    if line_count > 800:
+        findings.append(f"  Modulen är stor ({line_count} rader) — överväg uppdelning")
+
+    result = f"**Statisk analys: {module_name}** ({line_count} rader)\n\n"
+    if findings:
+        result += "Hittade:\n" + "\n".join(findings[:10])
+    else:
+        result += "Inga uppenbara problem hittade."
+
+    result += "\n\n_LLM-analys ej tillgänglig — kör på Gear 2+ för djupare granskning._"
+    return result
+
+
+def _review_all_modules() -> str:
+    """
+    Snabb statisk analys av alla moduler.
+    Flaggar de med mest problem.
+    """
+    from app.foundation import APP_DIR
+    modules = sorted(APP_DIR.glob("*.py"))
+
+    if not modules:
+        return "Inga moduler hittade i app/."
+
+    summary = [f"**Kodgranskning: alla moduler** ({len(modules)} filer)\n"]
+    flagged = []
+
+    for mod in modules:
+        if mod.name.startswith("__"):
+            continue
+        try:
+            code  = mod.read_text(encoding="utf-8", errors="replace")
+            lines = len(code.splitlines())
+            issues = 0
+            if "shell=True" in code:     issues += 3
+            if lines > 800:              issues += 1
+            import re
+            if re.search(r'except\s*:', code): issues += 1
+
+            if issues > 0:
+                flagged.append((issues, mod.name, lines))
+        except Exception:
+            pass
+
+    if flagged:
+        flagged.sort(reverse=True)
+        summary.append("Moduler som bör granskas (mest problem först):")
+        for issues, name, lines in flagged[:8]:
+            summary.append(f"  • {name:<35} ({lines} rader, {issues} flaggor)")
+        summary.append(
+            f"\nSkriv 'granska [modulnamn]' för djupare analys."
+        )
+    else:
+        summary.append("Inga uppenbara problem hittade i någon modul.")
+
+    return "\n".join(summary)
+
+
+def _extract_file_path(goal: str) -> str:
+    """Extraherar filsökväg från naturligt språk."""
+    import re
+    from app.foundation import ZERO_ROOT
+
+    # Matcha explicit sökväg /opt/...
+    m = re.search(r'(/opt/[\w/.\-_]+)', goal)
+    if m:
+        return m.group(1)
+
+    # Matcha relativ sökväg med känd katalog
+    m = re.search(r'((?:docs?|books?|app|config|data)/[\w/.\-_ ]+\.(?:pdf|txt|py|md|docx|xlsx|csv|json|yaml|log|sh|env))', goal, re.IGNORECASE)
+    if m:
+        return str(ZERO_ROOT / m.group(1).strip())
+
+    # Matcha filnamn med extension — ta bort ledande verb
+    m = re.search(r'([\w\-_ ]+\.(?:pdf|txt|py|md|docx|xlsx|csv|json|yaml|log|sh|env))', goal, re.IGNORECASE)
+    if m:
+        filename = m.group(1).strip()
+        # Ta bort ledande verb som kan ha fastnat
+        for verb in ("läs ", "read ", "öppna ", "studera ", "visa "):
+            if filename.lower().startswith(verb):
+                filename = filename[len(verb):]
+                break
+        # Sök i vanliga kataloger
+        search_dirs = [
+            ZERO_ROOT / "docs" / "books",
+            ZERO_ROOT / "docs",
+            ZERO_ROOT / "app",
+            ZERO_ROOT / "config",
+            ZERO_ROOT / "data",
+            ZERO_ROOT,
+        ]
+        for d in search_dirs:
+            candidate = d / filename
+            if candidate.exists():
+                return str(candidate)
+        # Returnera i docs/books som default
+        return str(ZERO_ROOT / "docs" / "books" / filename)
+
+    return ""
+
+
+def _read_file_intent(goal: str) -> str:
+    """
+    Zero läser en fil på riktigt — aldrig gissar innehållet.
+    Stöder PDF, DOCX, Excel, text, kod m.m.
+    """
+    from pathlib import Path
+    file_path = _extract_file_path(goal)
+
+    if not file_path:
+        return (
+            "Jag förstår att du vill läsa en fil men kan inte hitta sökvägen. "
+            "Skriv exakt filnamn, t.ex: 'läs Bashar transcripts from talks.pdf'"
+        )
+
+    path = Path(file_path)
+
+    if not path.exists():
+        # Försök hitta med fuzzy match
+        parent = path.parent
+        if parent.exists():
+            candidates = list(parent.glob(f"*{path.stem[:10]}*"))
+            if candidates:
+                path = candidates[0]
+                file_path = str(path)
+            else:
+                files_list = "\n".join(
+                    f"  {f.name}" for f in parent.iterdir() if f.is_file()
+                )[:2000]
+                return (
+                    f"Filen finns inte: {file_path}\n"
+                    f"Filer i {parent}:\n{files_list}"
+                )
+        else:
+            return f"Varken filen eller katalogen finns: {file_path}"
+
+    ext = path.suffix.lower()
+    size_mb = path.stat().st_size / 1024 / 1024
+
+    # PDF — använd pdftotext
+    if ext == ".pdf":
+        return _read_pdf_file(file_path, size_mb)
+
+    # Övriga filer — läs direkt via zero_sudo
+    return _read_text_file(file_path, size_mb)
+
+
+def _read_pdf_file(file_path: str, size_mb: float) -> str:
+    """Läser PDF via pdftotext."""
+    try:
+        from app.zero_sudo import run as sudo_run
+
+        # Konvertera till text
+        tmp = f"/tmp/zero_pdf_{abs(hash(file_path))}.txt"
+        r = sudo_run(
+            ["pdftotext", "-layout", file_path, tmp],
+            note=f"read_pdf:{file_path[-40:]}"
+        )
+
+        if not r.get("ok"):
+            # Försök installera poppler-utils
+            sudo_run(["apt-get", "install", "-y", "poppler-utils"],
+                    note="install_poppler")
+            r = sudo_run(["pdftotext", "-layout", file_path, tmp],
+                        note="read_pdf_retry")
+
+        if not r.get("ok"):
+            # Fallback — pdfplumber
+            try:
+                import pdfplumber
+                text_parts = []
+                with pdfplumber.open(file_path) as pdf:
+                    pages = len(pdf.pages)
+                    for i, page in enumerate(pdf.pages[:5]):
+                        t = page.extract_text() or ""
+                        if t.strip():
+                            text_parts.append(f"--- Sida {i+1} ---\n" + t)
+                text = "\n\n".join(text_parts)
+                return (
+                    f"**{file_path.split('/')[-1]}** ({pages} sidor, {size_mb:.1f}MB)\n\n"
+                    f"Visar sida 1-5:\n\n{text[:4000]}\n\n"
+                    f"_Skriv 'läs sida 6-10' för mer_"
+                )
+            except Exception as e:
+                return f"Kunde inte läsa PDF: {e}\nFörsök: kör sudo apt-get install poppler-utils"
+
+        # Läs de första 100 raderna
+        r2 = sudo_run(["head", "-n", "100", tmp], note="read_pdf_head")
+        text = r2.get("stdout", "").strip()
+
+        # Räkna totalt antal rader
+        r3 = sudo_run(["wc", "-l", tmp], note="count_lines")
+        total = r3.get("stdout", "?").split()[0] if r3.get("ok") else "?"
+
+        fname = file_path.split('/')[-1]
+        return (
+            f"**{fname}** ({size_mb:.1f}MB, ~{total} rader)\n\n"
+            f"```\n{text}\n```\n\n"
+            f"_Visar rad 1-100. Skriv 'läs rad 101-200' för mer._"
+        )
+
+    except Exception as e:
+        return f"Fel vid PDF-läsning: {e}"
+
+
+def _read_text_file(file_path: str, size_mb: float) -> str:
+    """Läser textfil via zero_sudo."""
+    try:
+        from app.zero_sudo import run as sudo_run
+        r = sudo_run(["head", "-n", "100", file_path],
+                    note=f"read_file:{file_path[-40:]}")
+        if not r.get("ok"):
+            return f"Kunde inte läsa {file_path}: {r.get('stderr','')}"
+
+        text = r.get("stdout", "").strip()
+        r2   = sudo_run(["wc", "-l", file_path], note="count_lines")
+        total = r2.get("stdout", "?").split()[0] if r2.get("ok") else "?"
+
+        from pathlib import Path
+        ext  = Path(file_path).suffix.lower()
+        lang = {"py":"python","js":"javascript","sh":"bash",
+                "json":"json","yaml":"yaml","md":"markdown"}.get(ext[1:], "")
+
+        fname = file_path.split('/')[-1]
+        return (
+            f"**{fname}** ({size_mb:.1f}MB, ~{total} rader)\n\n"
+            f"```{lang}\n{text}\n```\n\n"
+            f"_Visar rad 1-100. Skriv 'läs rad 101-200' för mer._"
+        )
+    except Exception as e:
+        return f"Fel: {e}"
+
+
+def _list_files_intent(goal: str) -> str:
+    """Listar filer i en katalog."""
+    from pathlib import Path
+    from app.foundation import ZERO_ROOT
+    import re
+
+    # Hitta katalog
+    dirs = {
+        "books": ZERO_ROOT / "docs" / "books",
+        "docs":  ZERO_ROOT / "docs",
+        "app":   ZERO_ROOT / "app",
+        "config":ZERO_ROOT / "config",
+        "data":  ZERO_ROOT / "data",
+    }
+
+    target = None
+    for key, path in dirs.items():
+        if key in goal.lower():
+            target = path
+            break
+
+    if not target:
+        target = ZERO_ROOT / "docs"
+
+    if not target.exists():
+        return f"Katalogen finns inte: {target}"
+
+    files = sorted(target.rglob("*") if "alla" in goal.lower()
+                   else target.iterdir())
+    lines = [f"Filer i {target}:"]
+    for f in files[:50]:
+        if f.is_file():
+            size = f.stat().st_size
+            size_str = f"{size/1024:.0f}KB" if size > 1024 else f"{size}B"
+            lines.append(f"  {f.name:<40} {size_str}")
+
+    if not lines[1:]:
+        return f"Inga filer i {target}"
+
+    return "\n".join(lines)
+
 
 def _handle_system_intent(goal: str) -> str:
     """

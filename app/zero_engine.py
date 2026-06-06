@@ -95,7 +95,7 @@ try:
 except ImportError:
     GEAR4_OK = False
     _Gear4Conductor = None
-from app.zero_gear import select as gear_select, GearContext, record_latency
+from app.zero_gear import select as gear_select, GearContext, record_latency, response_needs_escalation
 def can_write_memory():
     from app.zero_memory_guard import can_write_memory as _cwm
     return _cwm()
@@ -246,6 +246,32 @@ def build_system_prompt(provider: str = None, session_id: str = None) -> str:
                 parts.append(f"=== ZERO SJÄLVKÄNNEDOM ===\n{sk}")
         except Exception as e:
             log.debug(f"self_knowledge: {e}")
+
+    # Capabilities — Zero vet vad den kan göra
+    parts.append("""=== ZERO CAPABILITIES ===
+Du är Zero — en AI med händer. Du kan agera, inte bara prata.
+
+Du har DIREKT ÅTKOMST till H9-servern via zero_sudo.
+Du KAN och SKA köra kommandon när Frank frågar om systemet.
+
+Exempel på vad du kan göra:
+  - Läsa filer:     kör cat /opt/zeropointai/next_zero/.env
+  - Kolla hårdvara: kör nvidia-smi
+  - Visa processer: kör ps aux
+  - Läsa loggar:    kör journalctl -n 50
+  - Kolla disk:     kör df -h
+  - Git-status:     kör git -C /opt/zeropointai/next_zero log --oneline -5
+
+NÄR Frank frågar om en fil, konfiguration eller systemstatus:
+  → Svara INTE från ditt träningsdata
+  → Säg INTE "jag kan inte läsa filer"
+  → KÖR det relevanta kommandot och visa det faktiska resultatet
+
+Format för att köra kommando: skriv exakt "kör [kommando]" som svar
+så hanterar router.py det automatiskt.
+
+Du har också: zero_system_intent.py för djupare förståelse,
+zero_gear4.py för flerstegsuppdrag, och zero_sudo.py för alla kommandon.""")
 
     # DRM — wave-propagation kontext
     try:
@@ -588,8 +614,20 @@ class ZeroEngine:
         # Kör systemåtgärd
         if intent:
             force = force_evo and intent.get("action") == "run_evolution"
-            result = execute_system_action(intent["action"], engine=self, force=force)
+            result = execute_system_action(
+                intent["action"], engine=self, force=force,
+                intent_original=intent.get("original", "")
+            )
             if result is not None:
+                # Självläkning — om resultatet är ett felmeddelande, försök fixa
+                if self._looks_like_error(result):
+                    healed = self._try_self_heal(
+                        action  = intent["action"],
+                        error   = result,
+                        original = intent.get("original", ""),
+                    )
+                    if healed:
+                        result = healed
                 if can_write_memory().get("ok"):
                     save_memory("assistant", result, session_id=self.session_id)
                 return {"response": result, "in_tok": 0, "out_tok": 0, "cost_sek": 0.0}
@@ -641,6 +679,28 @@ class ZeroEngine:
 
                 response, in_tok, out_tok, thinking = result
                 self.last_thinking = thinking
+
+                # Eskalering — om Gear 1 svarade att den inte kan → prova Gear 3
+                if response_needs_escalation(response, decision.gear):
+                    log.info(f"Gear 1 misslyckades — eskalerar till Gear 3")
+                    escalation_providers = ["gemini", "claude", "mistral"]
+                    for esc_provider in escalation_providers:
+                        esc_caller = PROVIDER_CALLERS.get(esc_provider)
+                        if not esc_caller:
+                            continue
+                        try:
+                            esc_result = esc_caller(messages, system)
+                            esc_response = esc_result[0]
+                            if esc_response and not response_needs_escalation(esc_response, 1):
+                                response = esc_response
+                                in_tok   = esc_result[1]
+                                out_tok  = esc_result[2]
+                                pname    = esc_provider
+                                log.info(f"Eskalering lyckades: {esc_provider}")
+                                break
+                        except Exception as e:
+                            log.debug(f"Eskalering {esc_provider}: {e}")
+                            continue
 
                 cost_sek = calc_cost_sek(pname, in_tok, out_tok)
                 self.session_cost          += cost_sek
@@ -746,6 +806,152 @@ class ZeroEngine:
             return None
         finally:
             self.gear4_active = False
+
+    def _looks_like_error(self, result: str) -> bool:
+        """Känner igen felmeddelanden från systemåtgärder."""
+        if not result:
+            return False
+        error_signals = [
+            "misslyckades", "cannot import", "ImportError",
+            "AttributeError", "no module named", "failed",
+            "Error:", "Traceback", "exception",
+            "not found", "hittades inte",
+        ]
+        result_lower = result.lower()
+        return any(s.lower() in result_lower for s in error_signals)
+
+    def _try_self_heal(
+        self,
+        action:   str,
+        error:    str,
+        original: str = "",
+    ) -> Optional[str]:
+        """
+        Zero försöker läka sig själv när ett systemkommando misslyckas.
+
+        Steg:
+        1. Förstå felet (vad gick fel?)
+        2. Undersök (kör grep/ls för att hitta rätt funktion/fil)
+        3. Fixa (uppdatera relevant fil)
+        4. Retry (kör ursprungskommandot igen)
+        5. Rapportera (berätta för Frank vad som hände)
+
+        Allt via zero_sudo — aldrig direkt filmanipulation.
+        """
+        log.info(f"Self-heal triggered: action={action} error={error[:80]}")
+
+        try:
+            # ── Steg 1: Förstå felet ─────────────────────────────────────────
+            heal_result = self._analyze_and_fix(action, error, original)
+            if heal_result:
+                # Steg 4: Retry
+                from app.router import execute_system_action as esa
+                retry = esa(action, engine=self, intent_original=original)
+                if retry and not self._looks_like_error(retry):
+                    # Lyckades! Berätta för Frank
+                    fixed_msg = retry + "\n\n_[Zero fixade automatiskt: " + heal_result + "]_"
+                    return fixed_msg
+                return retry or heal_result
+        except Exception as e:
+            log.warning(f"Self-heal failed: {e}")
+
+        return None
+
+    def _analyze_and_fix(
+        self,
+        action:   str,
+        error:    str,
+        original: str,
+    ) -> Optional[str]:
+        """
+        Analyserar ett fel och försöker fixa det automatiskt.
+        Returnerar beskrivning av vad som fixades, eller None.
+        """
+        try:
+            from app.zero_sudo import run as sudo_run
+
+            # ── ImportError: fel funktionsnamn ───────────────────────────────
+            if "cannot import name" in error or "ImportError" in error:
+                # Extrahera modulnamn och funktionsnamn
+                import re
+
+                # "cannot import name 'run_doctor' from 'app.zero_doctor'"
+                pat = "cannot import name " + r"'(\w+)'" + " from " + r"'([\w.]+)'"
+                m = re.search(pat, error)
+                if m:
+                    wrong_name = m.group(1)
+                    module     = m.group(2).replace(".", "/") + ".py"
+                    module_path = f"/opt/zeropointai/next_zero/{module}"
+
+                    # Hitta rätt funktionsnamn
+                    r = sudo_run(
+                        ["grep", "-n", "^def ", module_path],
+                        note=f"self_heal:find_functions:{module}"
+                    )
+                    if r.get("ok"):
+                        functions = []
+                        for line in r["stdout"].splitlines():
+                            func_match = re.search(r"def (\w+)\(", line)
+                            if func_match:
+                                functions.append(func_match.group(1))
+
+                        # Hitta närmaste match
+                        best = self._find_best_match(wrong_name, functions)
+                        if best:
+                            # Fixa router.py
+                            router_path = "/opt/zeropointai/next_zero/app/router.py"
+                            r2 = sudo_run(
+                                ["sed", "-i",
+                                 f"s/from {m.group(2)} import {wrong_name}/from {m.group(2)} import {best}/g",
+                                 router_path],
+                                note=f"self_heal:fix_import:{wrong_name}->{best}"
+                            )
+                            if r2.get("ok"):
+                                log.info(f"Self-heal: fixed {wrong_name} → {best} in router.py")
+                                return f"Fixade import: {wrong_name} → {best}"
+
+            # ── ModuleNotFoundError ───────────────────────────────────────────
+            if "no module named" in error.lower():
+                import re
+                pat2 = r"no module named '([\w.]+)'"
+                m = re.search(pat2, error.lower())
+                if m:
+                    module = m.group(1)
+                    return f"Modul '{module}' saknas — behöver installeras eller skapas"
+
+        except Exception as e:
+            log.debug(f"_analyze_and_fix: {e}")
+
+        return None
+
+    def _find_best_match(self, target: str, candidates: list) -> Optional[str]:
+        """Hittar bästa matchande funktionsnamn via edit distance."""
+        if not candidates:
+            return None
+
+        target_lower = target.lower()
+
+        # Exakt match
+        for c in candidates:
+            if c.lower() == target_lower:
+                return c
+
+        # Innehåller target
+        for c in candidates:
+            if target_lower in c.lower() or c.lower() in target_lower:
+                return c
+
+        # Gemensam delsekvens
+        best_score = 0
+        best_match = None
+        for c in candidates:
+            score = sum(1 for a, b in zip(target_lower, c.lower()) if a == b)
+            score /= max(len(target), len(c))
+            if score > best_score:
+                best_score = score
+                best_match = c
+
+        return best_match if best_score > 0.4 else None
 
     def _reflect_async(self):
         """Auto-reflektion i bakgrundstråd — blockerar inte chatten."""

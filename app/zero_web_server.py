@@ -22,11 +22,15 @@ Allt sådant lever i zero_engine.py.
 
 from __future__ import annotations
 
+import cgi
+import io
 import os
 import sys
 import json
 import logging
 import re
+import tempfile
+import uuid
 from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse
@@ -199,6 +203,10 @@ class ZeroHandler(BaseHTTPRequestHandler):
             self._handle_set_provider()
             return
 
+        if path == "/upload":
+            self._handle_upload()
+            return
+
         self._send_json({"error": f"Okänd endpoint: {path}"}, 404)
 
     # ── Endpoint-handlers ─────────────────────────────────────────────────────
@@ -293,6 +301,61 @@ class ZeroHandler(BaseHTTPRequestHandler):
         self._send_json({"ok": True, "provider": canonical})
 
     # ── Hjälp ─────────────────────────────────────────────────────────────────
+
+    def _handle_upload(self):
+        """
+        Tar emot en eller flera filer via multipart/form-data.
+        Returnerar lista med filinnehåll redo för LLM.
+        """
+        try:
+            content_type = self.headers.get("Content-Type", "")
+            content_len  = int(self.headers.get("Content-Length", 0))
+
+            if not content_type.startswith("multipart/form-data"):
+                self._send_json({"error": "Kräver multipart/form-data"}, 400)
+                return
+
+            # Parsa multipart
+            environ = {
+                "REQUEST_METHOD":  "POST",
+                "CONTENT_TYPE":    content_type,
+                "CONTENT_LENGTH":  str(content_len),
+            }
+            body = self.rfile.read(content_len)
+            form = cgi.FieldStorage(
+                fp      = io.BytesIO(body),
+                environ = environ,
+                keep_blank_values = True,
+            )
+
+            from app.zero_file_reader import read_file
+            results = []
+
+            files = form.getlist("file") or ([form["file"]] if "file" in form else [])
+            for field in files:
+                if not hasattr(field, "filename") or not field.filename:
+                    continue
+                filename = Path(field.filename).name  # Säkert filnamn
+                content  = field.file.read()
+                mime     = field.type or "application/octet-stream"
+
+                result = read_file(filename, content, mime)
+                results.append(result)
+                log.info(f"Upload: {filename} ({len(content)} bytes) → {result['type']}")
+
+            if not results:
+                self._send_json({"error": "Inga filer hittades i uppladdningen"}, 400)
+                return
+
+            self._send_json({
+                "ok":    True,
+                "files": results,
+                "count": len(results),
+            })
+
+        except Exception as e:
+            log.error(f"/upload fel: {e}", exc_info=True)
+            self._send_json({"error": str(e)}, 500)
 
     def _get_engine(self) -> ZeroEngine:
         if ZeroHandler._engine is None:

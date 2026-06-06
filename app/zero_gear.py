@@ -108,6 +108,12 @@ GEAR3_FORCE_PATTERNS = [
     r"\b(rådet|council|zero.?circle)\b",
     r"\bkonsultera\s+rådet\b",
 
+    # Systemrelaterade frågor — kräver faktisk åtkomst, inte träningsdata
+    r"\b(\.env|env.fil|miljövariabel|environment variable)\b",
+    r"\b(mailserver|imap|smtp|mail.*inställning)\b",
+    r"\b(finns det|finns det.*\?|har du|kan du läsa|kan du kolla)\b.{0,30}\b(fil|mapp|modul|konfiguration|inställning)\b",
+    r"\b(läs|visa|kolla|hämta).{0,20}\b(fil|\.env|\.py|\.json|\.yaml)\b",
+
     # Manuell override — Frank ber om mer kapacitet
     # Naturligt språk för att byta upp till Gear 3
     r"\b(smartare|smart(are)?)\s+tack\b",
@@ -489,6 +495,43 @@ def _select_forced_gear(
     return _minimal_fallback(prompt, channel, complexity)
 
 # ── Latency tracking ──────────────────────────────────────────────────────────
+
+# ── Response Quality Detection ───────────────────────────────────────────────
+
+# Signaler på att Gear 1 inte klarade uppgiften
+GEAR1_FAILURE_SIGNALS = [
+    "kan inte scanna",
+    "kan inte läsa",
+    "har inte tillgång",
+    "ingen direkt",
+    "saknar åtkomst",
+    "i cannot",
+    "i don't have access",
+    "unable to access",
+    "cannot read",
+    "don't have the ability",
+    "jag kan inte",
+    "det är inte möjligt för mig",
+    "som ai har jag inte",
+    "men jag kan inte",
+    "tyvärr kan jag inte",
+]
+
+def response_needs_escalation(response: str, gear: int) -> bool:
+    """
+    Kollar om ett Gear 1-svar indikerar att Zero inte klarade uppgiften.
+    Om ja → eskalera till Gear 3.
+
+    "Om Zero svarar negativt på Gear 1 ska den växla upp" — Frank
+    """
+    if gear != 1:
+        return False
+    if not response:
+        return False
+
+    response_lower = response.lower()
+    return any(signal in response_lower for signal in GEAR1_FAILURE_SIGNALS)
+
 
 def record_latency(provider: str, latency_ms: float, success: bool = True) -> None:
     """
