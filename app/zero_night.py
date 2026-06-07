@@ -26,13 +26,6 @@ CLI:
     python zero_night.py --study-only       -- bara studiesession
     python zero_night.py --status           -- visa status
     python zero_night.py --dry-run          -- kör utan skriva till STONE
-
-ZERO_MODULE:    autonomy
-ZERO_LAYER:     3
-ZERO_ESSENTIAL: false
-ZERO_ROLE:      Nattlig evolution — kalibrering, studiesession, morgonidentitet, git-backup
-ZERO_DEPENDS:   foundation.py, drm_memory.py, memory_resonance.py
-ZERO_USED_BY:   systemd timer (zero-night.timer, kl 03:00)
 """
 
 from __future__ import annotations
@@ -59,11 +52,7 @@ sys.path.insert(0, str(ROOT_DIR))
 from dotenv import load_dotenv
 load_dotenv(ROOT_DIR / ".env")
 
-try:
-    from app.foundation import ZERO_ROOT
-except ImportError:
-    ZERO_ROOT = Path(os.getenv("ZERO_ROOT", "/opt/zeropointai"))
-
+ZERO_ROOT    = Path(os.getenv("ZERO_ROOT", "/opt/zeropointai"))
 GEMINI_KEY   = os.getenv("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 NIGHT_LOG    = ZERO_ROOT / "data" / "night_log.json"
@@ -352,6 +341,109 @@ Svara med ett JSON-objekt:
         log.error(f"  Steg 4 fel: {e}")
         return {"ok": False, "error": str(e), "studied": False}
 
+def step4b_study_books(dry_run: bool = False) -> Dict[str, Any]:
+    """
+    Steg 4b: Studerar böcker i docs/books/ i portioner.
+    Läser 100 rader per bok per natt och sparar till STONE.
+    Håller koll på var den är i varje bok via core_identity.
+    """
+    log.info("Steg 4b: Studerar böcker...")
+
+    books_dir = ZERO_ROOT / "docs" / "books"
+    if not books_dir.exists():
+        log.info("  Ingen books-katalog hittad")
+        return {"ok": True, "books_read": 0}
+
+    books = list(books_dir.glob("*.pdf")) + list(books_dir.glob("*.txt"))
+    if not books:
+        log.info("  Inga böcker hittade")
+        return {"ok": True, "books_read": 0}
+
+    log.info(f"  Hittade {len(books)} böcker")
+    books_read = 0
+    results = []
+
+    try:
+        from app.drm_memory import save_memory, upsert_core_identity, execute_query
+        import subprocess
+
+        for book in books[:3]:  # Max 3 böcker per natt
+            book_key = book.stem.replace(" ", "_")[:40]
+
+            # Hämta var vi är i boken
+            rows = execute_query("""
+                SELECT fact_value FROM core_identity
+                WHERE fact_type = 'book_progress'
+                AND fact_key = %s
+                LIMIT 1
+            """, (book_key,))
+
+            start_line = int(rows[0]["fact_value"]) if rows else 0
+            end_line   = start_line + 100
+
+            log.info(f"  Läser {book.name} rad {start_line}-{end_line}...")
+
+            if dry_run:
+                results.append({"book": book.name, "dry_run": True})
+                continue
+
+            # Extrahera text
+            if book.suffix == ".pdf":
+                r = subprocess.run(
+                    ["pdftotext", "-layout", str(book), "-"],
+                    capture_output=True, text=True, timeout=30
+                )
+                text = r.stdout or ""
+            else:
+                text = book.read_text(encoding="utf-8", errors="replace")
+
+            lines = text.splitlines()
+            total = len(lines)
+
+            if start_line >= total:
+                log.info(f"  {book.name} är fulläst ({total} rader)")
+                results.append({"book": book.name, "completed": True})
+                continue
+
+            portion = "\n".join(lines[start_line:end_line])
+            if not portion.strip():
+                results.append({"book": book.name, "empty_portion": True})
+                continue
+
+            # Spara till STONE
+            save_memory(
+                role      = "system",
+                content   = (
+                    f"[book_study] {book.name} rad {start_line}-{end_line}/{total}\n\n"
+                    + portion[:2000]
+                ),
+                source    = "zero_night:book_study",
+                session_id = "night_books",
+            )
+
+            # Uppdatera progress
+            upsert_core_identity(
+                fact_type  = "book_progress",
+                fact_key   = book_key,
+                fact_value = str(end_line),
+                source     = "zero_night",
+            )
+
+            books_read += 1
+            results.append({
+                "book":       book.name,
+                "lines_read": f"{start_line}-{end_line}/{total}",
+                "progress":   f"{min(100, int(end_line/total*100))}%",
+            })
+            log.info(f"  Klart: {book.name} {min(100, int(end_line/total*100))}%")
+
+    except Exception as e:
+        log.error(f"  Steg 4b fel: {e}")
+        return {"ok": False, "error": str(e), "books_read": books_read}
+
+    return {"ok": True, "books_read": books_read, "results": results}
+
+
 def step5_save_night_memory(
     study_result: Dict,
     calibration_stats: Dict,
@@ -478,75 +570,6 @@ def _save_night_log(result: Dict) -> None:
     except Exception as e:
         log.warning(f"Kunde inte spara nattlogg: {e}")
 
-# ── Git-backup ───────────────────────────────────────────────────────────────
-
-def step7_git_backup(dry_run: bool = False) -> Dict[str, Any]:
-    """
-    Steg 7: Git-backup till GitHub.
-    Committar kärnfiler och pushar till origin.
-    Körs sist i nattsekvensen — efter att alla ändringar är gjorda.
-    """
-    import subprocess
-    log.info("Steg 7: Git-backup...")
-
-    app_dir = ZERO_ROOT / "app"
-    if not (ZERO_ROOT / ".git").exists():
-        log.info("  Inget git-repo — hoppar över backup")
-        return {"ok": True, "skipped": True, "reason": "Inget git-repo"}
-
-    if dry_run:
-        log.info("  DRY RUN — hoppar över git push")
-        return {"ok": True, "dry_run": True}
-
-    try:
-        date_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-
-        # Hämta antal minnen för commit-meddelande
-        try:
-            from app.drm_memory import get_memory_stats
-            stats = get_memory_stats()
-            mem_count = stats.get("total_memories", 0)
-        except Exception:
-            mem_count = "?"
-
-        # git add
-        subprocess.run(
-            ["git", "add", "app/", "docs/", "config/zero_ui_v22.html"],
-            cwd=str(ZERO_ROOT), capture_output=True, timeout=30
-        )
-
-        # git commit
-        msg = f"Zero nattlig backup — {date_str} — {mem_count} minnen"
-        result_commit = subprocess.run(
-            ["git", "commit", "-m", msg],
-            cwd=str(ZERO_ROOT), capture_output=True, text=True, timeout=30
-        )
-
-        if result_commit.returncode != 0:
-            if "nothing to commit" in result_commit.stdout:
-                log.info("  Inga ändringar att committa")
-                return {"ok": True, "committed": False, "reason": "nothing to commit"}
-            log.warning(f"  git commit: {result_commit.stderr[:200]}")
-            return {"ok": False, "error": result_commit.stderr[:200]}
-
-        # git push
-        result_push = subprocess.run(
-            ["git", "push"],
-            cwd=str(ZERO_ROOT), capture_output=True, text=True, timeout=60
-        )
-
-        if result_push.returncode == 0:
-            log.info(f"  ✓ Git-backup klar: {msg}")
-            return {"ok": True, "committed": True, "message": msg}
-        else:
-            log.warning(f"  git push misslyckades: {result_push.stderr[:200]}")
-            return {"ok": False, "error": result_push.stderr[:200]}
-
-    except Exception as e:
-        log.warning(f"  Steg 7 fel: {e}")
-        return {"ok": False, "error": str(e)}
-
-
 # ── Huvudfunktion ─────────────────────────────────────────────────────────────
 
 def run_night_sequence(
@@ -602,6 +625,11 @@ def run_night_sequence(
         study = {"ok": True, "studied": False}
     result["steps"]["4_study"] = study
 
+    # Steg 4b: Bokstudier
+    if not calibrate_only:
+        books = step4b_study_books(dry_run=dry_run)
+        result["steps"]["4b_books"] = books
+
     # Steg 5: Spara nattminne
     if not calibrate_only:
         night_mem = step5_save_night_memory(study, calibration, dry_run=dry_run)
@@ -611,10 +639,6 @@ def run_night_sequence(
     if not calibrate_only and study.get("studied"):
         morning = step6_prepare_morning_identity(study, dry_run=dry_run)
         result["steps"]["6_morning_identity"] = morning
-
-    # Steg 7: Git-backup till GitHub
-    git_result = step7_git_backup(dry_run=dry_run)
-    result["steps"]["7_git_backup"] = git_result
 
     # Sammanfattning
     result["finished_at"] = datetime.datetime.now().isoformat()

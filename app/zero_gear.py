@@ -74,10 +74,10 @@ GEAR2_TOKEN_THRESHOLD: int = int(os.getenv("ZERO_GEAR2_TOKEN_THRESHOLD", "300"))
 GEAR3_TOKEN_THRESHOLD: int = int(os.getenv("ZERO_GEAR3_TOKEN_THRESHOLD", "800"))
 
 # Gear 2 provider preference order (first available wins)
-GEAR2_PROVIDERS = ["gemini", "mistral", "groq"]
+GEAR2_PROVIDERS = ["groq", "cerebras"]
 
 # Gear 3 provider preference order (first available wins)
-GEAR3_PROVIDERS = ["gemini", "claude", "mistral"]
+GEAR3_PROVIDERS = ["groq", "cerebras", "deepseek"]
 
 # Input channels that always start at Gear 1
 VOICE_CHANNELS = {"voice", "stt", "whisper", "voice_input"}
@@ -354,18 +354,10 @@ def select(
             )
         return _try_gear3_with_fallback(prompt, channel, complexity=1, fallback_from=1)
 
-    # === 5. GEAR 3 — standard för allt annat ===
-    # Local-first: försök Gear 1 för enkla frågor, Gear 2 för medium, Gear 3 bara vid behov
+    # === 5. GEAR 2+ — standard för allt annat ===
+    # Gear 1 används BARA för triviala konversationer (steg 3/4 ovan).
+    # qwen3:4b hallucinerar tyst utan att flagga osäkerhet.
     complexity = _estimate_complexity(prompt)
-    if complexity == 1:
-        if _ollama_available():
-            provider, model = _resolve_provider_model("ollama")
-            return GearDecision(
-                gear=1, provider=provider, model=model,
-                reason="Low complexity — Gear 1 (local, free, sovereign).",
-                complexity=complexity, channel=channel,
-                latency_ms=_ollama_latency_ms,
-            )
     if complexity <= 2:
         result = _try_gear2(prompt, channel, complexity)
         if result:

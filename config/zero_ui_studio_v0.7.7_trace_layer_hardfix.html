@@ -1,0 +1,1422 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Zero UI Studio v0.7.7 — Trace Layer Hardfix</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+:root{
+  --text:#dffcff; --muted:rgba(223,252,255,.68); --ac:#22d3ee; --ac2:#fbbf24;
+  --panel:rgba(4,10,24,.72); --panelSoft:rgba(255,255,255,.07);
+  --danger:#ff2266; --ok:#00ff99; --bg-fit:contain;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden;background:#000;color:var(--text);font-family:Rajdhani,system-ui,sans-serif;user-select:none}
+body.light{--text:#08121f;--muted:rgba(8,18,31,.66);--ac:#0284c7;--ac2:#b45309;--panel:rgba(255,255,255,.76);--panelSoft:rgba(2,132,199,.08);--danger:#be123c;--ok:#059669}
+
+#world{
+  position:fixed;inset:0;z-index:0;background-position:center;background-size:var(--bg-fit,contain);background-repeat:no-repeat;background-color:#000;
+  background-image:
+    radial-gradient(circle at 50% 42%, rgba(34,211,238,.18), transparent 28%),
+    radial-gradient(circle at 50% 68%, rgba(251,191,36,.13), transparent 22%),
+    linear-gradient(180deg,#020611,#071228 55%,#020611);
+}
+body.light #world{
+  background-image:
+    radial-gradient(circle at 50% 42%, rgba(14,165,233,.15), transparent 28%),
+    radial-gradient(circle at 50% 68%, rgba(245,158,11,.14), transparent 22%),
+    linear-gradient(180deg,#f8fbff,#e0f2fe 55%,#fff7ed);
+}
+#world video{width:100%;height:100%;object-fit:var(--bg-fit,contain);display:block;background:#000}
+
+#atmo{position:fixed;inset:0;z-index:1;pointer-events:none}
+#atmo::before{
+  content:"";position:absolute;inset:-20%;
+  background-image:linear-gradient(rgba(125,211,252,.12) 1px,transparent 1px),linear-gradient(90deg,rgba(125,211,252,.12) 1px,transparent 1px);
+  background-size:54px 54px;transform:rotate(-1deg);
+}
+#atmo::after{content:"";position:absolute;inset:0;background:radial-gradient(circle at center,transparent 40%,rgba(0,0,0,.36))}
+body.light #atmo::after{background:radial-gradient(circle at center,transparent 45%,rgba(255,255,255,.20))}
+#bgfx{position:fixed;inset:0;z-index:2;pointer-events:none;mix-blend-mode:screen;opacity:var(--fx-opacity,.55)}
+#bgfx::before{
+  content:"";position:absolute;inset:0;
+  background:
+    radial-gradient(circle at var(--glow-x,50%) var(--glow-y,50%), rgba(34,211,238,var(--glow-strength,.22)), transparent 32%),
+    radial-gradient(circle at 35% 70%, rgba(255,255,255,var(--fog-strength,.12)), transparent 38%);
+  filter:blur(18px);
+}
+body.fx-off #bgfx{display:none}
+#connections{position:fixed;inset:0;z-index:8;pointer-events:none;overflow:visible}
+#root{position:fixed;inset:0;z-index:10}
+
+#topbar{
+  position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:400;
+  display:flex;align-items:center;gap:6px;padding:7px 10px;border-radius:999px;
+  background:rgba(2,6,18,.76);border:1px solid rgba(34,211,238,.24);backdrop-filter:blur(16px);
+  box-shadow:0 0 42px rgba(34,211,238,.12);
+}
+body.light #topbar{background:rgba(255,255,255,.78);border-color:rgba(2,132,199,.28)}
+#logo{font:900 12px Orbitron,monospace;letter-spacing:3px;color:var(--ac);padding:0 10px;border-right:1px solid rgba(34,211,238,.18)}
+.tb{
+  border:1px solid transparent;background:transparent;color:var(--muted);border-radius:999px;
+  padding:7px 12px;font:700 10px "Share Tech Mono",monospace;letter-spacing:1.2px;text-transform:uppercase;cursor:pointer;white-space:nowrap
+}
+.tb:hover,.tb.active{border-color:rgba(34,211,238,.40);color:var(--ac);background:rgba(34,211,238,.10)}
+.sep{width:1px;height:16px;background:rgba(34,211,238,.16)}
+
+#welcome{
+  position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:350;width:min(620px,calc(100vw - 32px));
+  background:rgba(2,6,18,.78);border:1px solid rgba(34,211,238,.28);border-radius:28px;padding:28px;backdrop-filter:blur(18px);
+  box-shadow:0 30px 90px rgba(0,0,0,.45),0 0 80px rgba(34,211,238,.10)
+}
+body.light #welcome{background:rgba(255,255,255,.82)}
+#welcome h1{font:900 28px Orbitron,monospace;color:var(--ac);letter-spacing:1px;margin-bottom:8px}
+#welcome p{font-size:18px;line-height:1.35;color:var(--muted);margin-bottom:18px}
+.bigrow{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.bigbtn{
+  border:1px solid rgba(34,211,238,.28);background:rgba(34,211,238,.08);color:var(--text);
+  border-radius:18px;padding:16px 18px;cursor:pointer;text-align:left;font-weight:800;font-size:17px
+}
+.bigbtn:hover{border-color:rgba(34,211,238,.60);background:rgba(34,211,238,.15)}
+.drop{margin-top:12px;border:1px dashed rgba(34,211,238,.35);border-radius:18px;padding:16px;text-align:center;color:var(--muted);background:rgba(34,211,238,.05);font:700 13px "Share Tech Mono",monospace;letter-spacing:1px}
+body.dragging .drop,#dropzone.dragover{border-color:var(--ac);color:var(--ac);background:rgba(34,211,238,.13)}
+
+#sidebar{
+  position:fixed;right:14px;top:62px;bottom:14px;width:350px;z-index:320;display:none;flex-direction:column;overflow:hidden;
+  background:var(--panel);border:1px solid rgba(34,211,238,.22);border-radius:24px;backdrop-filter:blur(18px);box-shadow:0 18px 60px rgba(0,0,0,.35)
+}
+#sidebar.open{display:flex}
+.side-head{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid rgba(34,211,238,.14)}
+.side-head h2{font:900 14px Orbitron,monospace;letter-spacing:2px;color:var(--ac)}
+.close{width:30px;height:30px;border:1px solid rgba(255,34,102,.35);background:transparent;color:var(--danger);border-radius:10px;cursor:pointer}
+.tabs{display:flex;border-bottom:1px solid rgba(34,211,238,.12)}
+.tab{flex:1;background:transparent;border:0;color:var(--muted);padding:12px 4px;font:700 10px "Share Tech Mono",monospace;letter-spacing:1px;text-transform:uppercase;cursor:pointer}
+.tab.active{color:var(--ac);box-shadow:inset 0 -2px var(--ac)}
+.pane{display:none;padding:14px;overflow:auto}
+.pane.active{display:block}
+.grp{margin-bottom:16px}
+.lbl{display:block;color:var(--muted);font:700 10px "Share Tech Mono",monospace;letter-spacing:1.4px;text-transform:uppercase;margin-bottom:7px}
+.fullbtn,.mini{
+  border:1px solid rgba(34,211,238,.24);background:rgba(34,211,238,.06);color:var(--text);border-radius:12px;padding:10px 12px;cursor:pointer;font-weight:800
+}
+.fullbtn{width:100%;text-align:left;margin-bottom:7px;font-size:15px}
+.fullbtn:hover,.mini:hover{border-color:rgba(34,211,238,.55);background:rgba(34,211,238,.13)}
+input[type=text],textarea,select{
+  width:100%;border:1px solid rgba(34,211,238,.24);background:rgba(255,255,255,.06);color:var(--text);
+  border-radius:12px;padding:10px 12px;outline:none;font-size:15px
+}
+textarea{height:180px;resize:vertical;font-family:"Share Tech Mono",monospace;font-size:11px}
+input[type=range]{width:100%;accent-color:var(--ac)}
+input[type=color]{width:100%;height:40px;border:1px solid rgba(34,211,238,.25);border-radius:12px;background:transparent;padding:2px}
+.smallnote{font-size:13px;color:var(--muted);line-height:1.35;margin-top:7px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+
+.overlay{
+  position:absolute;z-index:20;border:1px solid rgba(34,211,238,.30);background:var(--panel);backdrop-filter:blur(12px);
+  box-shadow:0 0 30px rgba(34,211,238,.13);color:var(--text)
+}
+.overlay.selected{outline:2px solid var(--ac);box-shadow:0 0 48px rgba(34,211,238,.35)!important}
+body.runtime .overlay.selected{outline:0}
+.handle{cursor:move}
+.resize{position:absolute;z-index:80;display:block}
+.rh-r{right:-6px;top:10%;width:12px;height:80%;cursor:ew-resize}
+.rh-l{left:-6px;top:10%;width:12px;height:80%;cursor:ew-resize}
+.rh-b{bottom:-6px;left:10%;height:12px;width:80%;cursor:ns-resize}
+.rh-t{top:-6px;left:10%;height:12px;width:80%;cursor:ns-resize}
+.rh-br{right:-7px;bottom:-7px;width:18px;height:18px;cursor:nwse-resize}
+.rh-bl{left:-7px;bottom:-7px;width:18px;height:18px;cursor:nesw-resize}
+.rh-tr{right:-7px;top:-7px;width:18px;height:18px;cursor:nesw-resize}
+.rh-tl{left:-7px;top:-7px;width:18px;height:18px;cursor:nwse-resize}
+.rh-br::after,.rh-bl::after,.rh-tr::after,.rh-tl::after{content:"";position:absolute;right:3px;bottom:3px;width:8px;height:8px;border-right:2px solid var(--ac);border-bottom:2px solid var(--ac);border-radius:0 0 3px 0}
+.rh-bl::after{left:3px;right:auto;transform:rotate(90deg)}
+.rh-tr::after{top:3px;bottom:auto;transform:rotate(-90deg)}
+.rh-tl::after{left:3px;top:3px;right:auto;bottom:auto;transform:rotate(180deg)}
+body.runtime .resize,body.runtime .edit-only{display:none!important}
+
+.core{border-radius:50%;display:flex;align-items:center;justify-content:center;text-align:center;font-family:Orbitron,monospace;font-weight:900;overflow:visible;background:radial-gradient(circle,rgba(34,211,238,.22),rgba(2,6,18,.75) 62%,rgba(2,6,18,.15))}
+.core .core-inner{position:absolute;inset:0;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.core .core-icon{font-size:32px;margin-bottom:6px;filter:drop-shadow(0 0 14px var(--ac))}
+.core .core-name{font-size:14px;text-shadow:0 0 12px var(--ac)}
+.core::before,.node::before{content:"";position:absolute;inset:-10px;border-radius:50%;border:1px solid rgba(34,211,238,.20);animation:pulse 3.5s ease-in-out infinite;pointer-events:none}
+.core::after{content:"";position:absolute;inset:18%;border-radius:50%;border:1px solid rgba(251,191,36,.22);animation:pulse 5.5s ease-in-out infinite reverse;pointer-events:none}
+@keyframes pulse{0%,100%{transform:scale(.98);opacity:.35}50%{transform:scale(1.08);opacity:.85}}
+
+.chat{display:flex;flex-direction:column;min-width:230px;min-height:145px;border-radius:18px;overflow:hidden}
+.chat-head{padding:11px 14px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(34,211,238,.18);font:900 12px Orbitron,monospace;letter-spacing:2px;color:var(--ac)}
+.chat-msgs{flex:1;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:8px;font-size:17px}
+.msg{padding:8px 12px;border-radius:14px;max-width:84%;line-height:1.25}
+.user{align-self:flex-end;background:rgba(34,211,238,.14)}
+.zero{align-self:flex-start;background:rgba(255,255,255,.08)}
+.chat-input{display:flex;gap:8px;padding:10px;border-top:1px solid rgba(34,211,238,.15)}
+.chat-input input{font-size:17px}
+.chat-input button{width:44px;border-radius:12px;border:1px solid rgba(34,211,238,.35);background:rgba(34,211,238,.10);color:var(--ac);font-size:19px;cursor:pointer}
+
+.overlay.chat.text-only{background:transparent!important;border-color:transparent!important;box-shadow:none!important;backdrop-filter:none!important}
+.overlay.chat.text-only .chat-head,.overlay.chat.text-only .chat-input{background:transparent!important;border-color:transparent!important}
+.overlay.chat.text-only .chat-head{opacity:.45}
+.overlay.chat.text-only .chat-input input{background:rgba(0,0,0,.10);border-color:rgba(255,255,255,.08)}
+.overlay.chat.text-only .chat-input button{background:rgba(0,0,0,.10)}
+.overlay.chat.text-only .msg{background:transparent!important;text-shadow:0 2px 8px #000,0 0 12px color-mix(in srgb, var(--ac) 42%, transparent)}
+.chat-msgs.edge-fade{-webkit-mask-image:linear-gradient(to bottom, transparent 0%, black 18%, black 82%, transparent 100%);mask-image:linear-gradient(to bottom, transparent 0%, black 18%, black 82%, transparent 100%)}
+.chat-msgs.radial-fade{-webkit-mask-image:radial-gradient(ellipse at center, black 45%, rgba(0,0,0,.65) 68%, transparent 100%);mask-image:radial-gradient(ellipse at center, black 45%, rgba(0,0,0,.65) 68%, transparent 100%)}
+@keyframes textBreathe{0%,100%{filter:brightness(1);text-shadow:0 2px 8px #000,0 0 8px color-mix(in srgb, var(--ac) 25%, transparent)}50%{filter:brightness(1.25);text-shadow:0 2px 10px #000,0 0 22px color-mix(in srgb, var(--ac) 70%, transparent)}}
+.overlay.chat.text-breathe .msg,.overlay.chat.text-breathe .chat-head{animation:textBreathe 3.8s ease-in-out infinite}
+
+.node{border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;font-family:Orbitron,monospace;font-weight:900;overflow:visible}
+.node .icon{font-size:30px;margin-bottom:5px;filter:drop-shadow(0 0 10px var(--ac))}
+.node .name{font-size:14px;text-shadow:0 0 12px rgba(34,211,238,.7)}
+.panel{border-radius:20px;overflow:hidden;min-width:230px;min-height:150px}
+.panel-head{padding:12px 14px;border-bottom:1px solid rgba(34,211,238,.18);font:900 12px Orbitron,monospace;letter-spacing:2px;color:var(--ac);display:flex;justify-content:space-between}
+.panel-body{padding:12px;display:flex;flex-direction:column;gap:9px}
+.item{display:flex;justify-content:space-between;align-items:center;padding:10px 11px;border-radius:14px;background:rgba(255,255,255,.07);font-size:17px}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--ok);box-shadow:0 0 12px var(--ok)}
+.panel-switcher{border-radius:999px;display:flex;align-items:center;justify-content:center;font:900 13px Orbitron,monospace;letter-spacing:1px;cursor:pointer}
+.panel-switcher .switch-inner{width:100%;height:100%;display:flex;align-items:center;justify-content:center;gap:8px;padding:8px 14px;border-radius:999px}
+.widget{border-radius:18px;overflow:hidden;min-width:170px;min-height:90px}
+.widget .body{padding:14px;font-size:18px}
+.clock{font:900 32px "Share Tech Mono",monospace;color:var(--ac);text-align:center;text-shadow:0 0 16px rgba(34,211,238,.55)}
+.hover-title{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);opacity:0;pointer-events:none;white-space:nowrap;font:900 14px Orbitron,monospace;color:var(--ac);text-shadow:0 0 12px var(--ac),0 2px 8px #000;transition:opacity .18s}
+
+.overlay.blend{background:transparent!important;border-color:transparent!important;box-shadow:none!important;backdrop-filter:none!important}
+.overlay.blend .chat-head,.overlay.blend .chat-input,.overlay.blend .panel-head{background:transparent!important;border-color:transparent!important}
+.overlay.invisible-item{opacity:.02!important;background:transparent!important;border-color:transparent!important;box-shadow:none!important;backdrop-filter:none!important}
+.overlay.invisible-item:hover,body.reveal-invisible .overlay.invisible-item{opacity:.82!important;border-color:rgba(251,191,36,.75)!important;background:rgba(5,12,26,.32)!important;box-shadow:0 0 34px rgba(251,191,36,.30)!important;backdrop-filter:blur(6px)!important}
+.overlay.invisible-item:hover .hover-title,body.reveal-invisible .overlay.invisible-item .hover-title{opacity:1}
+.overlay.invisible-item.panel .panel-body{opacity:0}
+.overlay.invisible-item.panel:hover .panel-body,body.reveal-invisible .overlay.invisible-item.panel .panel-body{opacity:1}
+.ghost{opacity:.22}
+body.reveal-invisible #revealBtn{border-color:rgba(251,191,36,.75);color:var(--ac2);background:rgba(251,191,36,.16)}
+
+body.trace-editing .overlay{cursor:crosshair}
+body.trace-editing .overlay.selected{outline:2px solid var(--ac2)}
+.trace-point{position:fixed;z-index:90;width:13px;height:13px;border-radius:50%;background:var(--ac2);box-shadow:0 0 16px var(--ac2);transform:translate(-50%,-50%);pointer-events:none}
+#selectionHud{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:380;padding:9px 14px;border-radius:999px;background:rgba(2,6,18,.74);border:1px solid rgba(34,211,238,.25);backdrop-filter:blur(14px);font:700 12px "Share Tech Mono",monospace;color:var(--muted)}
+#toast{position:fixed;left:50%;bottom:62px;transform:translateX(-50%);z-index:600;background:rgba(3,7,18,.84);border:1px solid rgba(34,211,238,.35);color:var(--text);padding:12px 18px;border-radius:999px;backdrop-filter:blur(14px);font-weight:800;display:none}
+body.light #toast{background:rgba(255,255,255,.86)}
+.hidden{display:none}
+
+/* TRUE text-only HUD improvements */
+.overlay.chat.text-only{
+  background:transparent!important;
+  border-color:transparent!important;
+  box-shadow:none!important;
+  backdrop-filter:none!important;
+  outline-color:transparent;
+}
+.overlay.chat.text-only .chat-head{
+  display:none!important;
+}
+.overlay.chat.text-only .chat-input{
+  display:none!important;
+}
+.overlay.chat.text-only.show-input .chat-input{
+  display:flex!important;
+  background:transparent!important;
+  border-color:transparent!important;
+  opacity:.42;
+}
+.overlay.chat.text-only.show-input .chat-input:hover,
+.overlay.chat.text-only.show-input .chat-input:focus-within{
+  opacity:1;
+}
+.overlay.chat.text-only.show-input .chat-input input{
+  background:rgba(0,0,0,.14);
+  border-color:rgba(255,255,255,.12);
+}
+.overlay.chat.text-only.show-input .chat-input button{
+  background:rgba(0,0,0,.14);
+}
+.overlay.chat.text-only .chat-msgs{
+  padding:0!important;
+}
+.overlay.chat.text-only .msg{
+  background:transparent!important;
+  color:var(--chat-text-color,var(--text));
+  opacity:var(--chat-text-opacity,1);
+  text-shadow:
+    0 2px calc(4px + var(--chat-shadow,8px)) rgba(0,0,0,.95),
+    0 0 var(--chat-glow,14px) color-mix(in srgb, var(--chat-text-color,var(--ac)) 70%, transparent);
+}
+.overlay.chat.text-only .resize{
+  opacity:.25;
+}
+body.runtime .overlay.chat.text-only .resize{
+  display:none!important;
+}
+@keyframes textBreatheStrong{
+  0%,100%{
+    opacity:calc(var(--chat-text-opacity,1) * .82);
+    filter:brightness(.95);
+    text-shadow:0 2px 8px #000,0 0 calc(var(--chat-glow,14px) * .7) color-mix(in srgb,var(--chat-text-color,var(--ac)) 55%,transparent);
+  }
+  50%{
+    opacity:var(--chat-text-opacity,1);
+    filter:brightness(1.35);
+    text-shadow:0 2px 12px #000,0 0 calc(var(--chat-glow,14px) * 1.7) color-mix(in srgb,var(--chat-text-color,var(--ac)) 90%,transparent);
+  }
+}
+.overlay.chat.text-breathe .msg{
+  animation:textBreatheStrong 3.8s ease-in-out infinite;
+}
+
+
+.trace-point::after{
+  content:"";
+  position:absolute;
+  inset:-5px;
+  border-radius:50%;
+  border:1px solid rgba(251,191,36,.45);
+  animation:tracePointPulse 1.6s ease-in-out infinite;
+}
+@keyframes tracePointPulse{
+  0%,100%{transform:scale(.8);opacity:.35}
+  50%{transform:scale(1.45);opacity:.9}
+}
+
+
+/* Interactive holographic onboarding */
+#helpOverlay{
+  position:fixed;inset:0;z-index:900;display:none;
+  background:radial-gradient(circle at center,rgba(34,211,238,.10),rgba(0,0,0,.78));
+  backdrop-filter:blur(5px);
+}
+#helpOverlay.open{display:block}
+.help-card{
+  position:absolute;
+  width:min(560px,calc(100vw - 40px));
+  left:50%;top:50%;transform:translate(-50%,-50%);
+  background:rgba(2,8,22,.88);
+  border:1px solid rgba(34,211,238,.38);
+  border-radius:28px;
+  padding:26px;
+  box-shadow:0 0 80px rgba(34,211,238,.18);
+}
+.help-card h2{
+  font:900 24px Orbitron,monospace;
+  color:var(--ac);
+  letter-spacing:1.5px;
+  margin-bottom:8px;
+}
+.help-card p{font-size:17px;color:var(--muted);line-height:1.35;margin-bottom:14px}
+.help-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:15px 0}
+.help-topic{
+  border:1px solid rgba(34,211,238,.22);
+  background:rgba(34,211,238,.07);
+  border-radius:16px;
+  padding:13px;
+  cursor:pointer;
+}
+.help-topic:hover,.help-topic.active{
+  border-color:var(--ac);
+  background:rgba(34,211,238,.16);
+}
+.help-topic strong{display:block;color:var(--text);font-size:16px;margin-bottom:3px}
+.help-topic span{font-size:13px;color:var(--muted)}
+.help-steps{
+  border:1px solid rgba(251,191,36,.25);
+  background:rgba(251,191,36,.07);
+  border-radius:18px;
+  padding:15px;
+  font-size:16px;
+  line-height:1.45;
+}
+.help-steps ol{padding-left:22px}
+.help-actions{display:flex;gap:10px;margin-top:16px}
+.help-actions button{
+  flex:1;
+  border:1px solid rgba(34,211,238,.30);
+  background:rgba(34,211,238,.09);
+  color:var(--text);
+  border-radius:14px;
+  padding:11px;
+  cursor:pointer;
+  font-weight:900;
+}
+.help-actions button:hover{border-color:var(--ac);background:rgba(34,211,238,.17)}
+.help-highlight{
+  outline:2px solid var(--ac2)!important;
+  box-shadow:0 0 45px rgba(251,191,36,.45)!important;
+  animation:helpPulse 1.2s ease-in-out infinite;
+}
+@keyframes helpPulse{0%,100%{filter:brightness(1)}50%{filter:brightness(1.45)}}
+
+/* Chat input sizing/visibility */
+.overlay.chat{
+  --chat-input-opacity:1;
+  --chat-input-height:44px;
+  --chat-input-width:100%;
+  --chat-input-font-size:17px;
+}
+.chat-input{
+  opacity:var(--chat-input-opacity,1);
+  min-height:var(--chat-input-height,44px);
+}
+.chat-input input{
+  height:calc(var(--chat-input-height,44px) - 14px);
+  font-size:var(--chat-input-font-size,17px)!important;
+  max-width:var(--chat-input-width,100%);
+}
+.chat-input button{
+  height:calc(var(--chat-input-height,44px) - 10px);
+  min-width:calc(var(--chat-input-height,44px) - 10px);
+}
+.overlay.chat.input-ghost .chat-input{
+  opacity:.18;
+}
+.overlay.chat.input-ghost .chat-input:hover,
+.overlay.chat.input-ghost .chat-input:focus-within{
+  opacity:1;
+}
+
+
+.guide-modal{
+  position:fixed;inset:0;z-index:850;display:none;
+  background:rgba(0,0,0,.72);backdrop-filter:blur(7px);
+}
+.guide-modal.open{display:block}
+.guide-box{
+  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  width:min(540px,calc(100vw - 36px));
+  background:rgba(2,8,22,.90);
+  border:1px solid rgba(34,211,238,.34);
+  border-radius:26px;padding:26px;
+  box-shadow:0 0 90px rgba(34,211,238,.18);
+}
+.guide-box h2{font:900 23px Orbitron,monospace;color:var(--ac);margin-bottom:8px}
+.guide-box p{font-size:17px;color:var(--muted);line-height:1.35;margin-bottom:16px}
+.guide-actions{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.guide-actions button{
+  border:1px solid rgba(34,211,238,.28);background:rgba(34,211,238,.08);
+  color:var(--text);border-radius:14px;padding:12px;cursor:pointer;font-weight:900
+}
+.guide-actions button:hover{border-color:var(--ac);background:rgba(34,211,238,.16)}
+.unsaved-warning{
+  border:1px solid rgba(251,191,36,.35);
+  background:rgba(251,191,36,.08);
+  color:var(--ac2);
+  border-radius:14px;
+  padding:10px 12px;
+  margin-top:8px;
+  font-size:13px;
+}
+
+
+/* Node action states */
+.overlay.status-running{
+  border-color:rgba(251,191,36,.75)!important;
+  box-shadow:0 0 55px rgba(251,191,36,.45)!important;
+}
+.overlay.status-ok{
+  border-color:rgba(0,255,153,.75)!important;
+  box-shadow:0 0 55px rgba(0,255,153,.35)!important;
+}
+.overlay.status-error{
+  border-color:rgba(255,34,102,.75)!important;
+  box-shadow:0 0 55px rgba(255,34,102,.42)!important;
+}
+.node-badge{
+  position:absolute;left:50%;bottom:-18px;transform:translateX(-50%);
+  font:700 10px "Share Tech Mono",monospace;
+  color:var(--ac2);
+  background:rgba(2,6,18,.72);
+  border:1px solid rgba(251,191,36,.28);
+  border-radius:999px;
+  padding:3px 8px;
+  white-space:nowrap;
+  pointer-events:none;
+}
+
+
+.project-library{
+  border:1px solid rgba(251,191,36,.20);
+  background:rgba(251,191,36,.045);
+  border-radius:16px;
+  padding:12px;
+}
+
+
+/* v0.7.7-trace-layer-hardfix movable settings panel */
+#sidebar{
+  resize:both;
+  min-width:300px;
+  min-height:360px;
+  max-width:92vw;
+  max-height:92vh;
+}
+#sidebar.floating{
+  top:80px;
+  right:auto;
+  bottom:auto;
+  left:calc(100vw - 380px);
+  height:calc(100vh - 110px);
+}
+#sidebar .side-head{
+  cursor:move;
+}
+.side-tools{
+  display:flex;
+  gap:6px;
+  align-items:center;
+}
+.side-tool{
+  width:30px;height:30px;
+  border:1px solid rgba(34,211,238,.25);
+  background:rgba(34,211,238,.06);
+  color:var(--ac);
+  border-radius:10px;
+  cursor:pointer;
+  font-weight:900;
+}
+.side-tool:hover{
+  border-color:var(--ac);
+  background:rgba(34,211,238,.14);
+}
+.project-status-pill{
+  display:inline-block;
+  border:1px solid rgba(251,191,36,.28);
+  background:rgba(251,191,36,.08);
+  color:var(--ac2);
+  border-radius:999px;
+  padding:4px 9px;
+  font:700 11px "Share Tech Mono",monospace;
+  margin-top:6px;
+}
+.package-note{
+  border:1px solid rgba(34,211,238,.22);
+  background:rgba(34,211,238,.06);
+  border-radius:14px;
+  padding:10px 12px;
+  margin-top:8px;
+  color:var(--muted);
+  font-size:13px;
+  line-height:1.35;
+}
+
+
+/* v0.7.2 panel pages + manual chat input */
+.panel-head-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  margin-bottom:12px;
+}
+.panel-head-row h3{margin:0!important}
+.panel-page-nav{
+  display:flex;
+  gap:5px;
+  align-items:center;
+}
+.panel-page-nav button{
+  width:28px;height:24px;
+  border:1px solid rgba(34,211,238,.30);
+  background:rgba(34,211,238,.08);
+  color:var(--ac);
+  border-radius:8px;
+  cursor:pointer;
+  font-weight:900;
+}
+.panel-page-nav button:hover{border-color:var(--ac);background:rgba(34,211,238,.18)}
+.panel-page-indicator{
+  font:700 10px "Share Tech Mono",monospace;
+  color:var(--muted);
+  min-width:28px;
+  text-align:center;
+}
+.chat.manual-input .chat-input{
+  position:absolute;
+  left:var(--chat-input-x,12px);
+  top:var(--chat-input-y,calc(100% - 52px));
+  width:var(--chat-input-width,50%);
+  height:var(--chat-input-height,38px);
+  border-top:0!important;
+  padding:0!important;
+  z-index:4;
+}
+.chat.manual-input .chat-input input{
+  width:100%;
+  height:100%;
+}
+.chat.manual-input .chat-input button{
+  height:100%;
+}
+.chat .chat-body{
+  position:relative;
+}
+
+
+
+/* v0.7.5 Chat Lab + clearer node wiring */
+.chat-msgs{scroll-behavior:smooth}
+.chat-msgs.fade-old .msg{opacity:.38;transition:opacity .25s,transform .25s}
+.chat-msgs.fade-old .msg:nth-last-child(-n+3){opacity:1;transform:translateY(0)}
+.chat-msgs.compact .msg:nth-child(n+1):nth-last-child(n+7){display:none}
+.chat-msgs.grow-mode{overflow:hidden}
+.chat-tools-mini{position:absolute;right:10px;bottom:10px;display:flex;gap:6px;opacity:.38;z-index:6}
+.chat:hover .chat-tools-mini,.chat:focus-within .chat-tools-mini{opacity:1}
+.chat-tools-mini button{border:1px solid rgba(34,211,238,.35);background:rgba(2,8,22,.65);color:var(--ac);border-radius:10px;padding:5px 8px;font-weight:900;cursor:pointer}
+.chat-tools-mini button:hover{border-color:var(--ac);background:rgba(34,211,238,.14)}
+.node-help-card{border:1px solid rgba(251,191,36,.24);background:rgba(251,191,36,.055);border-radius:15px;padding:11px 12px;color:var(--muted);font-size:13px;line-height:1.35;margin-top:8px}
+.node-help-card b{color:var(--ac2)}
+.connection-picker{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:8px}
+.connection-picker button{border:1px solid rgba(34,211,238,.24);background:rgba(34,211,238,.06);color:var(--text);border-radius:12px;padding:9px;font-weight:900;cursor:pointer}
+.connection-picker button:hover{border-color:var(--ac);background:rgba(34,211,238,.14)}
+.help-steps code{color:var(--ac);font-family:"Share Tech Mono",monospace}
+
+
+
+/* v0.7.5 Living Connection / Signal Pulse */
+#topbar.mini-topbar{opacity:.16; transform:translateX(-50%) translateY(-44px); transition:opacity .2s, transform .2s}
+#topbar.mini-topbar:hover{opacity:1; transform:translateX(-50%) translateY(0)}
+#topbar.free-topbar{left:16px;transform:none;cursor:move}
+.signal-path{transition:stroke-width .18s, opacity .18s, filter .18s; pointer-events:auto; cursor:pointer; stroke-dasharray:10 14; animation:signalIdle 9s linear infinite}
+.signal-path.signal-active{stroke-width:7!important; opacity:1!important; animation:signalFlow .55s linear infinite; filter:drop-shadow(0 0 15px currentColor) drop-shadow(0 0 30px currentColor)!important}
+.signal-path.signal-return{stroke-width:6!important; opacity:.95!important; animation:signalReturn .65s linear infinite; filter:drop-shadow(0 0 16px currentColor)!important}
+.signal-path.context{stroke-dasharray:14 12}
+.signal-path.typing{stroke-dasharray:3 10}
+.signal-path.code{stroke-dasharray:2 6 12 8}
+.signal-path.image{stroke-dasharray:20 18}
+.signal-path.vibes{stroke-dasharray:10 8 2 8}
+.signal-label{font:700 11px "Share Tech Mono",monospace;fill:var(--muted);opacity:.75;paint-order:stroke;stroke:rgba(0,0,0,.8);stroke-width:3px;pointer-events:none}
+.signal-particle{font:900 16px "Share Tech Mono",monospace;fill:var(--ac2);opacity:.9;filter:drop-shadow(0 0 7px currentColor);pointer-events:none}
+@keyframes signalIdle{to{stroke-dashoffset:-240}}
+@keyframes signalFlow{to{stroke-dashoffset:-60}}
+@keyframes signalReturn{to{stroke-dashoffset:60}}
+.core.processing{animation:coreThink .8s ease-in-out 2; box-shadow:0 0 80px rgba(251,191,36,.55)!important}
+@keyframes coreThink{0%,100%{transform:scale(1)}50%{transform:scale(1.045);filter:brightness(1.55)}}
+.signal-chip{border:1px solid rgba(251,191,36,.26);background:rgba(251,191,36,.06);border-radius:12px;padding:9px;margin:6px 0;font-size:13px;color:var(--muted)}
+body.runtime #topbar{display:none!important}
+
+
+/* v0.7.7 hard visible DOM trace layer */
+#wireLayer{position:fixed;inset:0;z-index:9;pointer-events:none;overflow:visible}
+.wire-seg{position:fixed;height:6px;transform-origin:0 50%;border-radius:999px;opacity:.92;pointer-events:auto;mix-blend-mode:screen}
+.wire-seg::before{content:"";position:absolute;inset:-11px 0;border-radius:999px;background:currentColor;opacity:.22;filter:blur(12px)}
+.wire-seg::after{content:"";position:absolute;inset:0;border-radius:999px;background:linear-gradient(90deg, transparent, currentColor, white, currentColor, transparent);background-size:70px 100%;animation:wireMarch .8s linear infinite;opacity:.78}
+.wire-seg.selected{height:8px;opacity:1}
+.wire-seg.active{height:10px;opacity:1}
+@keyframes wireMarch{from{background-position:0 0}to{background-position:70px 0}}
+.wire-dot{position:fixed;width:18px;height:18px;border-radius:50%;z-index:10;transform:translate(-50%,-50%);background:currentColor;box-shadow:0 0 18px currentColor,0 0 42px currentColor;pointer-events:none}
+.wire-label-dom{position:fixed;z-index:11;font:900 11px "Share Tech Mono",monospace;color:#dffcff;text-shadow:0 2px 8px #000,0 0 12px currentColor;background:rgba(0,0,0,.42);border:1px solid rgba(34,211,238,.28);border-radius:999px;padding:4px 8px;pointer-events:none}
+</style>
+</head>
+<body>
+<div id="world"></div><div id="atmo"></div><div id="bgfx"></div><svg id="connections"></svg><div id="wireLayer"></div><div id="root"></div>
+
+<div id="topbar">
+  <span id="logo">ZERO UI STUDIO <span style='font-size:11px;opacity:.7;margin-left:6px'>v0.7.7-trace-layer-hardfix</span></span>
+  <button class="tb active" id="modeBtn" onclick="toggleRuntime()">Edit Mode</button>
+  <button class="tb" id="topbarHideBtn" onclick="toggleTopbarMini()">Hide Bar</button>
+  <button class="tb" id="topbarMoveBtn" onclick="toggleTopbarFree()">Move Bar</button>
+  <button class="tb" onclick="openSidebar('project')">Project</button>
+  <button class="tb" onclick="openSidebar('add')">Add</button>
+  <button class="tb" onclick="openSidebar('style')">Style</button>
+  <span class="sep"></span>
+  <button class="tb" onclick="chooseBackground()">🖼 Upload BG</button>
+  <button class="tb" onclick="openSidebar('forge')">BG Forge</button>
+  <button class="tb" onclick="openSidebar('trace')">Trace Lines</button>
+  <button class="tb" onclick="openSidebar('actions')">Node Actions</button>
+  <button class="tb" id="revealBtn" onclick="toggleRevealInvisible()">Show Invisible</button>
+  <button class="tb" onclick="clearBackground()">Clear BG</button>
+  <button class="tb" onclick="toggleTheme()">Light/Dark</button>
+  <button class="tb" onclick="toggleHelp()">?</button>
+</div>
+
+<div id="welcome">
+  <h1>New Overlay Project</h1>
+  <p>Välj hur du vill börja. Inget template-läge ska längre skriva över ditt projekt utan varning.</p>
+  <div class="bigrow">
+    <button class="bigbtn" onclick="startNewProjectWizard('blank')">＋ Blank Project<br><span style="color:var(--muted);font-size:13px">tom canvas, bygg från början</span></button>
+    <button class="bigbtn" onclick="startNewProjectWizard('zero_circle')">◎ Zero Circle Template<br><span style="color:var(--muted);font-size:13px">core + chat + noder + panels</span></button>
+  </div>
+  <div class="bigrow" style="margin-top:10px">
+    <button class="bigbtn" onclick="startNewProjectWizard('minimal_hud')">▱ Minimal HUD<br><span style="color:var(--muted);font-size:13px">text-only cockpit</span></button>
+    <button class="bigbtn" onclick="restorePreviousProject()">↩ Restore Previous<br><span style="color:var(--muted);font-size:13px">återställ autosparad session</span></button>
+  </div>
+  <div class="drop" id="dropzone">Tips: dra & släpp en bakgrundsbild här när projektet är startat</div>
+</div>
+
+<div id="newProjectGuide" class="guide-modal">
+  <div class="guide-box">
+    <h2 id="guideTitle">Create Project</h2>
+    <p id="guideText">Välj bakgrund nu eller fortsätt med genererad bakgrund.</p>
+    <div class="guide-actions">
+      <button onclick="guideChooseBackground()">🖼 Choose background</button>
+      <button onclick="guideContinue()">Continue</button>
+      <button onclick="closeNewProjectGuide()">Cancel</button>
+    </div>
+  </div>
+</div>
+<aside id="sidebar" class="floating">
+  <div class="side-head" id="sidebar-drag-handle">
+    <h2 id="side-title">Studio</h2>
+    <div class="side-tools">
+      <button class="side-tool" title="Dock left" onclick="dockSidebar('left')">⟸</button>
+      <button class="side-tool" title="Dock right" onclick="dockSidebar('right')">⟹</button>
+      <button class="side-tool" title="Center panel" onclick="dockSidebar('center')">◎</button>
+      <button class="close" onclick="closeSidebar()">✕</button>
+    </div>
+  </div>
+  <div class="tabs">
+    <button class="tab active" data-pane="project" onclick="showPane('project')">Project</button>
+    <button class="tab" data-pane="add" onclick="showPane('add')">Add</button>
+    <button class="tab" data-pane="style" onclick="showPane('style')">Style</button>
+    <button class="tab" data-pane="forge" onclick="showPane('forge')">Forge</button>
+    <button class="tab" data-pane="trace" onclick="showPane('trace')">Trace</button>
+    <button class="tab" data-pane="actions" onclick="showPane('actions')">Actions</button>
+  </div>
+
+  <section class="pane active" id="pane-project">
+    <div class="grp"><label class="lbl">Project name</label><input type="text" id="project-name" oninput="state.name=this.value;syncJson()" /></div>
+    <div class="grp project-library">
+      <label class="lbl">Project Library</label>
+      <button class="fullbtn" onclick="saveNamedProject()">💾 Save current project to browser</button>
+      <button class="fullbtn" onclick="loadNamedProject()">📂 Load saved browser project</button>
+      <button class="fullbtn" onclick="loadLastAutosave()">⏱ Load last autosave</button>
+      <button class="fullbtn" onclick="restorePreviousProject()">↩ Restore previous project</button>
+      <button class="fullbtn" onclick="document.getElementById('project-upload').click()">⬆ Import JSON / ZIP</button>
+      <button class="fullbtn" onclick="downloadProjectFolder()">🗂 Save Project Folder (.zip)</button>
+      <button class="fullbtn" onclick="downloadRuntimeHTML()">🚀 Export Live Runtime HTML</button>
+      <p class="smallnote" id="project-save-status">Browser save slot: unknown</p>
+      <div class="package-note">
+        <b>Package workflow:</b><br>
+        Save Project Folder exporterar en ZIP med scene.json. I v0.7.3 kan du importera ZIP-filen direkt.
+      </div>
+    </div>
+    <div class="grp">
+      <label class="lbl">Background fit</label>
+      <select id="bg-fit-select-top" onchange="setBackgroundFit(this.value)">
+        <option value="contain">Contain — svart runt om</option>
+        <option value="cover">Cover — fyll skärmen</option>
+        <option value="stretch">Stretch — dra ut bilden</option>
+      </select>
+      <p class="smallnote">Flyttad hit från topbaren. Topbaren ska vara renare.</p>
+    </div>
+
+    <div class="grp">
+      <label class="lbl">Templates</label>
+      <button class="fullbtn" onclick="startNewProjectWizard('blank')">＋ New Project Guide</button>
+      <button class="fullbtn" onclick="confirmLoadTemplate('zero_circle')">◎ Template: Zero Circle</button>
+      <button class="fullbtn" onclick="confirmLoadTemplate('minimal_hud')">▱ Template: Minimal HUD</button>
+      <p class="smallnote">Templates är startpunkter. Zero Circle är nu ett projekt/template — inte en fast knapp i topbaren.</p>
+    </div>
+    <div class="grp">
+      <button class="fullbtn" onclick="chooseBackground()">🖼 Ladda upp/byt bakgrund</button>
+      <label class="lbl">Background fit</label>
+      <select id="bg-fit-select" onchange="setBackgroundFit(this.value)">
+        <option value="contain">Contain — svart runt om</option>
+        <option value="cover">Cover — fyll skärmen</option>
+        <option value="stretch">Stretch — dra ut bilden</option>
+      </select>
+      <button class="fullbtn" onclick="saveLocal()">💾 Save legacy browser slot</button>
+      <button class="fullbtn" onclick="loadLocal()">📂 Load legacy browser save</button>
+      <button class="fullbtn" onclick="downloadProject()">⬇ Exportera JSON</button>
+      <button class="fullbtn" onclick="downloadProjectFolder()">🗂 Save Project Folder (.zip)</button>
+      <button class="fullbtn" onclick="downloadRuntimeHTML()">🚀 Export Live Runtime HTML</button>
+      <button class="fullbtn" onclick="document.getElementById('project-upload').click()">⬆ Importera JSON</button>
+    </div>
+    <div class="grp"><label class="lbl">Project JSON</label><textarea id="project-json" spellcheck="false"></textarea><button class="fullbtn" onclick="applyJson()">Apply JSON</button></div>
+  </section>
+
+  <section class="pane" id="pane-add">
+    <div class="grp">
+      <button class="fullbtn" onclick="addCore()">＋ Zero Core / Orb</button>
+      <button class="fullbtn" onclick="addChat()">＋ Chat Overlay</button>
+      <button class="fullbtn" onclick="addNode()">＋ Module Node</button>
+      <button class="fullbtn" onclick="addPanel()">＋ Panel</button>
+      <button class="fullbtn" onclick="addPanelSwitcher()">＋ Panel Switcher</button>
+      <button class="fullbtn" onclick="addWidget('clock')">＋ Clock Widget</button>
+      <button class="fullbtn" onclick="addWidget('note')">＋ Note Widget</button>
+      <div class="node-help-card"><b>Node workflow:</b><br>1. Add → Module Node<br>2. Markera noden<br>3. Actions → välj role/action<br>4. Add/Trace → Connect selected → core<br>5. Trace Lines → välj stil och rita kurva</div>
+    </div>
+    <div class="grp">
+      <button class="fullbtn" onclick="connectSelectedToCore()">⚡ Connect selected → core</button>
+      <button class="fullbtn" onclick="duplicateSelected()">⧉ Duplicera vald</button>
+      <button class="fullbtn" onclick="toggleGhost()">👻 Ghost/visible vald</button>
+      <button class="fullbtn" onclick="toggleBlend()">🫥 Smält in vald i bakgrunden</button>
+      <button class="fullbtn" onclick="toggleInvisibleSelected()">🕶 Invisible until hover</button>
+      <button class="fullbtn" onclick="deleteSelected()">✕ Radera vald</button>
+    </div>
+  </section>
+
+  <section class="pane" id="pane-style">
+    <div class="grp"><label class="lbl">Selected object</label><input type="text" id="sel-label" oninput="renameSelected(this.value)" /></div>
+    <div class="grp">
+      <label class="lbl">Action binding / Python route</label>
+      <input type="text" id="action-binding" placeholder="ex: zero_doctor.py eller action:doctor.scan" oninput="setActionBinding(this.value)" />
+      <p class="smallnote">OBS: HTML kör inte .py direkt. Detta är en bindning/action-id som senare skickas till Zero-backend/API.</p>
+    </div>
+    <div class="grp"><label class="lbl">Accent color</label><input type="color" id="accent" value="#22d3ee" oninput="setAccent(this.value)"></div>
+    <div class="grp"><label class="lbl">Opacity <span id="op-val">90%</span></label><input type="range" min="2" max="100" value="90" id="opacity" oninput="setSelectedOpacity(this.value)"></div>
+    <div class="grp"><label class="lbl">Glow <span id="glow-val">30px</span></label><input type="range" min="0" max="120" value="30" id="glow" oninput="setSelectedGlow(this.value)"></div>
+    <div class="grp two"><button class="mini" onclick="alignSelected('center')">Center</button><button class="mini" onclick="alignSelected('bottom')">Bottom</button></div>
+    <div class="grp">
+      <button class="fullbtn" onclick="toggleBlend()">🫥 Toggle blend mode</button>
+      <button class="fullbtn" onclick="toggleInvisibleSelected()">🕶 Toggle invisible/hover mode</button>
+    </div>
+
+    <div class="grp" id="chat-controls">
+      <label class="lbl">Chat controls</label>
+      <button class="fullbtn" onclick="toggleTextOnly()">🔤 Text Only chatbox</button>
+      <button class="fullbtn" onclick="toggleTextBreathe()">🫁 Texten andas</button>
+      <label class="lbl">Chat text color</label>
+      <input type="color" id="chat-text-color" value="#dffcff" oninput="setChatTextColor(this.value)">
+      <label class="lbl">Chat text size <span id="chat-text-size-val">17px</span></label>
+      <input type="range" min="10" max="42" value="17" id="chat-text-size" oninput="setChatTextSize(this.value)">
+      <label class="lbl">Text opacity <span id="chat-text-opacity-val">100%</span></label>
+      <input type="range" min="5" max="100" value="100" id="chat-text-opacity" oninput="setChatTextOpacity(this.value)">
+      <label class="lbl">Text glow / intensity <span id="chat-text-glow-val">14px</span></label>
+      <input type="range" min="0" max="80" value="14" id="chat-text-glow" oninput="setChatTextGlow(this.value)">
+      <label class="lbl">Text shadow <span id="chat-text-shadow-val">8px</span></label>
+      <input type="range" min="0" max="40" value="8" id="chat-text-shadow" oninput="setChatTextShadow(this.value)">
+      <button class="fullbtn" onclick="toggleTextOnlyInput()">⌨ Show input while Text Only</button>
+      <button class="fullbtn" onclick="toggleInputGhost()">👻 Input ghost until hover</button>
+      <label class="lbl">Input opacity <span id="chat-input-opacity-val">100%</span></label>
+      <input type="range" min="0" max="100" value="100" id="chat-input-opacity" oninput="setChatInputOpacity(this.value)">
+      <label class="lbl">Input height <span id="chat-input-height-val">44px</span></label>
+      <input type="range" min="18" max="110" value="44" id="chat-input-height" oninput="setChatInputHeight(this.value)">
+      <label class="lbl">Input width <span id="chat-input-width-val">100%</span></label>
+      <input type="range" min="10" max="100" value="100" id="chat-input-width" oninput="setChatInputWidth(this.value)">
+      <label class="lbl">Input text size <span id="chat-input-font-size-val">17px</span></label>
+      <input type="range" min="9" max="34" value="17" id="chat-input-font-size" oninput="setChatInputFontSize(this.value)">
+      <label class="lbl">Text fade</label>
+      <select id="chat-fade-mode" onchange="setChatFadeMode(this.value)">
+        <option value="none">None</option>
+        <option value="edge">Edge fade — upp/ner</option>
+        <option value="radial">Radial fade — kanter runt om</option>
+      </select>
+      <label class="lbl">När chatten blir full</label>
+      <select id="chat-overflow-mode" onchange="setChatOverflowMode(this.value)">
+        <option value="scroll">Scroll — fast box</option>
+        <option value="fade-old">Fade old — gammal text tonas</option>
+        <option value="compact">Compact — visa senaste 6</option>
+        <option value="grow">Grow — boxen växer</option>
+      </select>
+      <div class="two">
+        <button class="mini" onclick="addChatTestMessage()">+ Test message</button>
+        <button class="mini" onclick="clearChatMessages()">Clear chat</button>
+      </div>
+      <p class="smallnote">Skriv direkt i chatboxen och tryck Enter. Testläget sparas i projektet, så du ser hur layouten beter sig när texten växer.</p>
+    </div>
+  </section>
+
+  <section class="pane" id="pane-forge">
+    <div class="grp">
+      <label class="lbl">Background transform</label>
+      <button class="fullbtn" onclick="rotateBackground90(-90)">↺ Rotera -90°</button>
+      <button class="fullbtn" onclick="rotateBackground90(90)">↻ Rotera +90°</button>
+      <button class="fullbtn" onclick="rotateBackground180()">↻ Rotera 180°</button>
+      <button class="fullbtn" onclick="resetForge()">⟲ Reset forge</button>
+    </div>
+    <div class="grp"><label class="lbl">Zoom <span id="bg-zoom-val">100%</span></label><input type="range" min="50" max="250" value="100" id="bg-zoom" oninput="setBgForge('zoom',this.value)"></div>
+    <div class="grp"><label class="lbl">Position X <span id="bg-posx-val">0</span></label><input type="range" min="-100" max="100" value="0" id="bg-posx" oninput="setBgForge('posX',this.value)"></div>
+    <div class="grp"><label class="lbl">Position Y <span id="bg-posy-val">0</span></label><input type="range" min="-100" max="100" value="0" id="bg-posy" oninput="setBgForge('posY',this.value)"></div>
+    <div class="grp"><label class="lbl">Brightness <span id="bg-brightness-val">100%</span></label><input type="range" min="20" max="180" value="100" id="bg-brightness" oninput="setBgForge('brightness',this.value)"></div>
+    <div class="grp"><label class="lbl">Contrast <span id="bg-contrast-val">100%</span></label><input type="range" min="50" max="180" value="100" id="bg-contrast" oninput="setBgForge('contrast',this.value)"></div>
+    <div class="grp"><label class="lbl">Blur <span id="bg-blur-val">0px</span></label><input type="range" min="0" max="18" value="0" id="bg-blur" oninput="setBgForge('blur',this.value)"></div>
+    <div class="grp"><label class="lbl">Glow strength <span id="glow-strength-val">22%</span></label><input type="range" min="0" max="80" value="22" id="glow-strength" oninput="setBgForge('glowStrength',this.value)"></div>
+    <div class="grp"><label class="lbl">Glow X <span id="glow-x-val">50%</span></label><input type="range" min="0" max="100" value="50" id="glow-x" oninput="setBgForge('glowX',this.value)"></div>
+    <div class="grp"><label class="lbl">Glow Y <span id="glow-y-val">50%</span></label><input type="range" min="0" max="100" value="50" id="glow-y" oninput="setBgForge('glowY',this.value)"></div>
+    <div class="grp"><label class="lbl">Fog strength <span id="fog-strength-val">12%</span></label><input type="range" min="0" max="70" value="12" id="fog-strength" oninput="setBgForge('fogStrength',this.value)"></div>
+    <div class="grp">
+      <button class="fullbtn" onclick="toggleFxLayer()">🌫 Toggle dimma/glow preview</button>
+      <button class="fullbtn" onclick="freezeBackground()">🧊 Freeze background</button>
+      <button class="fullbtn" onclick="showFrozenInfo()">ℹ Unfreeze info</button>
+    </div>
+  </section>
+
+  <section class="pane" id="pane-trace">
+    <div class="grp">
+      <label class="lbl">Trace Line Editor</label>
+      <button class="fullbtn" onclick="startTraceEditor()">✏ Starta trace edit</button>
+      <button class="fullbtn" onclick="finishTraceEditor()">✓ Spara trace</button>
+      <button class="fullbtn" onclick="cancelTraceEditor()">✕ Avbryt trace</button>
+    </div>
+    <div class="grp">
+      <label class="lbl">Connection style</label>
+      <select id="trace-style" onchange="setSelectedConnectionStyle(this.value)">
+        <option value="glow">Glow</option><option value="electric">Electric</option><option value="plasma">Plasma</option><option value="lava">Lava</option><option value="water">Water</option>
+      </select>
+      <label class="lbl">Signal metric</label>
+      <select id="signal-metric" onchange="setSelectedConnectionMetric(this.value)">
+        <option value="context">Context flow</option>
+        <option value="typing">Typing activity</option>
+        <option value="code">Code / matrix</option>
+        <option value="vibes">Tone / vibes</option>
+        <option value="image">Image chunks</option>
+        <option value="memory">Memory retrieval</option>
+        <option value="tools">Tool calls</option>
+        <option value="resonance">Resonance</option>
+      </select>
+      <label class="lbl">Signal visual</label>
+      <select id="signal-visual" onchange="setSelectedConnectionVisual(this.value)">
+        <option value="energy">Energy pulse</option>
+        <option value="gold">Gold/inspiration</option>
+        <option value="matrix">Matrix code</option>
+        <option value="goo">Dark goo / problem flow</option>
+        <option value="emoji">Emoji stream</option>
+        <option value="chunks">Data chunks</option>
+      </select>
+      <button class="fullbtn" onclick="testSelectedSignal()">▶ Test pulse on selected connection</button>
+      <div class="signal-chip">Tips: koppla ZERO CHAT till ZERO CORE. När du skickar chat-text pulserar linjen automatiskt. Riktiga värden kopplas senare.</div>
+    </div>
+    <div class="grp"><label class="lbl">Connections</label><div id="connection-list"></div></div>
+    <div class="grp">
+      <button class="fullbtn" onclick="connectSelectedToCore()">⚡ Connect selected → core</button>
+      <button class="fullbtn" onclick="deleteSelectedConnection()">✕ Delete selected connection</button>
+      <button class="fullbtn" onclick="clearSelectedTrace()">🧽 Clear selected trace path</button>
+    </div>
+  </section>
+
+  <section class="pane" id="pane-actions">
+    <div class="grp">
+      <label class="lbl">Selected node/action</label>
+      <input type="text" id="node-action-label" placeholder="Välj en node först" disabled>
+      <p class="smallnote">Noder kan ha en action-id. I browsern kan de köras som demo/local actions. Med backend aktiv skickas de till Zero Python-backend.</p>
+      <div class="connection-picker">
+        <button onclick="connectSelectedToCore()">Connect → core</button>
+        <button onclick="openSidebar('trace')">Open Trace</button>
+      </div>
+      <div class="node-help-card"><b>Snabbkarta:</b> label = vad noden heter. role = vad noden är. action = vad den ska kalla på senare, t.ex. <code>zero_doctor.scan</code>.</div>
+    </div>
+
+    <div class="grp">
+      <label class="lbl">Node role</label>
+      <select id="node-role" onchange="setNodeRole(this.value)">
+        <option value="">None</option>
+        <option value="core">Core</option>
+        <option value="guardian">Guardian</option>
+        <option value="memory">Memory</option>
+        <option value="council">Council</option>
+        <option value="builder">Builder</option>
+        <option value="mirror">Mirror</option>
+        <option value="tool">Tool</option>
+      </select>
+    </div>
+
+    <div class="grp">
+      <label class="lbl">Action preset</label>
+      <select id="action-preset" onchange="setActionPreset(this.value)">
+        <option value="">Choose preset</option>
+        <option value="zero_core.runtime">zero_core.runtime</option>
+        <option value="zero_doctor.scan">zero_doctor.scan</option>
+        <option value="drm_memory.query">drm_memory.query</option>
+        <option value="mirror.reflect">mirror.reflect</option>
+        <option value="architect.plan">architect.plan</option>
+        <option value="builder.execute">builder.execute</option>
+        <option value="council.ask">council.ask</option>
+      </select>
+    </div>
+
+    <div class="grp">
+      <label class="lbl">Action binding</label>
+      <input type="text" id="node-action-binding" placeholder="ex: zero_doctor.scan" oninput="setActionBinding(this.value)">
+    </div>
+
+    <div class="grp">
+      <button class="fullbtn" onclick="runSelectedAction()">▶ Run selected node/action</button>
+      <button class="fullbtn" onclick="toggleBackendMode()">🔌 Toggle backend mode</button>
+      <label class="lbl">Backend URL</label>
+      <input type="text" id="backend-url" value="http://localhost:8765/run_action" oninput="setBackendUrl(this.value)">
+      <p class="smallnote" id="backend-mode-label">Mode: local demo actions</p>
+    </div>
+
+    <div class="grp">
+      <label class="lbl">Action log</label>
+      <textarea id="action-log" readonly spellcheck="false" style="height:210px"></textarea>
+      <button class="fullbtn" onclick="clearActionLog()">🧽 Clear log</button>
+    </div>
+  </section>
+
+</aside>
+
+<div id="selectionHud">SELECTED: none</div>
+
+<div id="helpOverlay">
+  <div class="help-card">
+    <h2>ZERO UI STUDIO — HELP</h2>
+    <p>Det här är en holografisk snabbguide. Välj område så får du exakt workflow och rätt delar av UI:t kan highlightas.</p>
+    <div class="help-grid">
+      <div class="help-topic active" onclick="showHelpTopic('basics',this)"><strong>Basics</strong><span>flytta, resize, select</span></div>
+      <div class="help-topic" onclick="showHelpTopic('chat',this)"><strong>Chat HUD</strong><span>text only, input, fade</span></div>
+      <div class="help-topic" onclick="showHelpTopic('trace',this)"><strong>Trace Lines</strong><span>levande signaler</span></div>
+      <div class="help-topic" onclick="showHelpTopic('forge',this)"><strong>BG Forge</strong><span>zoom, rotate, freeze</span></div>
+      <div class="help-topic" onclick="showHelpTopic('invisible',this)"><strong>Invisible UI</strong><span>hover-zoner och safe mode</span></div>
+      <div class="help-topic" onclick="showHelpTopic('runtime',this)"><strong>Runtime</strong><span>ren cockpit utan editor</span></div>
+      <div class="help-topic" onclick="showHelpTopic('templates',this)"><strong>Templates</strong><span>starta Zero Circle</span></div>
+    </div>
+    <div class="help-steps" id="helpSteps"></div>
+    <div class="help-actions">
+      <button onclick="showAllInvisibleFromHelp()">Show Invisible</button>
+      <button onclick="openHelpPanel()">Open Correct Panel</button>
+      <button onclick="toggleHelp()">Close</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+<input class="hidden" id="bg-upload" type="file" accept="image/*,video/*" onchange="handleBackgroundInput(event)" />
+<input class="hidden" id="project-upload" type="file" accept="application/json,.json,.zip" onchange="handleProjectImport(event)" />
+
+<script>
+const $ = id => document.getElementById(id);
+const root = $('root');
+const svg = $('connections');
+let selectedId = null;
+let selectedConnectionIndex = 0;
+let runtime = false;
+let zCounter = 30;
+let projectDirty = false;
+let pendingTemplateName = null;
+let sidebarDrag = null;
+let dragState = null;
+let resizeState = null;
+let traceEditing = false;
+let traceDraft = [];
+
+function defaultForge(){return {zoom:100,posX:0,posY:0,rotate:0,brightness:100,contrast:100,blur:0,glowStrength:22,glowX:50,glowY:50,fogStrength:12,fxOn:true}}
+const defaultProject={
+  id:'zero_circle_ui', name:'Zero Circle UI — v0.7.3 stable', theme:'dark', accent:'#22d3ee',
+  background:{type:'generated',data:null,fit:'contain',forge:defaultForge()},
+  overlays:[
+    {id:'zero_core',type:'core',label:'ZERO CORE',icon:'◉',x:.50,y:.50,w:150,h:150,opacity:.92,glow:55,core:true},
+    {id:'zero_chat',type:'chat',label:'ZERO CHAT',x:.52,y:.58,w:430,h:230,opacity:.72,glow:24,textOnly:false,textColor:'#dffcff',textSize:17,textOpacity:1,textGlow:14,textShadow:8,fadeMode:'none',textBreathe:false,showInputInTextOnly:false,inputOpacity:1,inputHeight:44,inputWidth:100,inputFontSize:17,inputGhost:false,manualInput:false,inputX:12,inputY:180,overflowMode:'scroll',messages:[{role:'zero',text:'Zero online.'},{role:'user',text:'Hello Zero.'},{role:'zero',text:'Runtime loader stable.'}]},
+    {id:'architect',type:'node',label:'Architect',icon:'♜',x:.50,y:.18,w:118,h:118,opacity:.9,glow:34,role:'council',action:'architect.plan'},
+    {id:'mirror',type:'node',label:'Mirror',icon:'◇',x:.74,y:.34,w:118,h:118,opacity:.9,glow:42,role:'mirror',action:'mirror.reflect'},
+    {id:'doctor',type:'node',label:'Doctor',icon:'⚕',x:.74,y:.68,w:118,h:118,opacity:.9,glow:34,role:'guardian',action:'zero_doctor.scan'},
+    {id:'memory',type:'node',label:'Memory',icon:'◆',x:.26,y:.68,w:118,h:118,opacity:.9,glow:38,role:'memory',action:'drm_memory.query'},
+    {id:'builder',type:'node',label:'Builder',icon:'⚡',x:.26,y:.34,w:118,h:118,opacity:.9,glow:38,role:'builder',action:'builder.execute'},
+    {id:'left_panel',type:'panel',label:'Councils / Modes / Routing',x:.02,y:.20,w:295,h:430,opacity:.76,glow:18,side:'left',pageIndex:0,pages:[{title:'Councils',items:['Architect','Mirror','Council','Builder']},{title:'Routing',items:['Local','OpenAI','Grok','Gemini']}]},
+    {id:'right_panel',type:'panel',label:'Vitals / Memory / Guardians',x:.79,y:.20,w:295,h:430,opacity:.76,glow:18,side:'right',pageIndex:0,pages:[{title:'Vitals',items:['Runtime OK','Memory online','Doctor idle']},{title:'Guardians',items:['Constitution','Backups','DB health']}]}
+  ],
+  connections:[
+    {from:'zero_chat',to:'zero_core',state:'idle',style:'plasma',metric:'context',visual:'energy',points:[]},
+    {from:'zero_core',to:'architect',state:'idle',style:'electric',points:[]},
+    {from:'zero_core',to:'mirror',state:'active',style:'plasma',points:[]},
+    {from:'zero_core',to:'doctor',state:'watch',style:'glow',points:[]},
+    {from:'zero_core',to:'memory',state:'active',style:'water',points:[]},
+    {from:'zero_core',to:'builder',state:'idle',style:'lava',points:[]}
+  ],
+  meta:{version:'0.7.5-living-connection',savedAt:null}
+};
+let state = structuredClone(defaultProject);
+
+function toast(t){const el=$('toast'); if(!el)return; el.textContent=t; el.style.display='block'; clearTimeout(window.__toastTimer); window.__toastTimer=setTimeout(()=>el.style.display='none',1800)}
+function pxX(v){return Math.round(v*innerWidth)}
+function pxY(v){return Math.round(v*innerHeight)}
+function nx(v){return +(v/innerWidth).toFixed(4)}
+function ny(v){return +(v/innerHeight).toFixed(4)}
+function overlay(id){return state.overlays.find(o=>o.id===id)}
+function uid(prefix){return `${prefix}_${Math.random().toString(36).slice(2,8)}`}
+function markDirty(){projectDirty=true; try{state.meta=state.meta||{};state.meta.savedAt=new Date().toISOString();localStorage.setItem('zero_ui_studio_autosave_v073',JSON.stringify(state));}catch(e){} updateProjectSaveStatus();}
+function syncJson(){const el=$('project-json'); if(el) el.value=JSON.stringify(state,null,2); markDirty();}
+function projectStorageKey(){return 'zero_ui_studio_named_project_v073'}
+function previousKey(){return 'zero_ui_studio_previous_project_v073'}
+function autosaveKey(){return 'zero_ui_studio_autosave_v073'}
+function rememberPreviousProject(){try{localStorage.setItem(previousKey(),JSON.stringify(state));}catch(e){}}
+function hideWelcome(){if($('welcome')) $('welcome').style.display='none'; if($('newProjectGuide')) $('newProjectGuide').classList.remove('open')}
+function safeClone(obj){return JSON.parse(JSON.stringify(obj))}
+
+function applyTheme(){document.body.classList.toggle('light',state.theme==='light');document.documentElement.style.setProperty('--ac',state.accent||'#22d3ee'); if($('accent')) $('accent').value=state.accent||'#22d3ee'}
+function applyBackground(){
+  const w=$('world'); if(!w)return;
+  const bg=state.background||{type:'generated',fit:'contain',forge:defaultForge()};
+  const fit=bg.fit||'contain';
+  document.documentElement.style.setProperty('--bg-fit',fit==='stretch'?'100% 100%':fit);
+  w.innerHTML='';
+  w.style.backgroundSize=fit==='stretch'?'100% 100%':fit;
+  w.style.backgroundImage='';
+  const f=Object.assign(defaultForge(),bg.forge||{});
+  w.style.filter=`brightness(${f.brightness}%) contrast(${f.contrast}%) blur(${f.blur}px)`;
+  w.style.transform=`translate(${f.posX/4}%,${f.posY/4}%) scale(${f.zoom/100}) rotate(${f.rotate}deg)`;
+  document.documentElement.style.setProperty('--glow-strength',(f.glowStrength/100).toFixed(2));
+  document.documentElement.style.setProperty('--glow-x',f.glowX+'%');
+  document.documentElement.style.setProperty('--glow-y',f.glowY+'%');
+  document.documentElement.style.setProperty('--fog-strength',(f.fogStrength/100).toFixed(2));
+  document.body.classList.toggle('fx-off',!f.fxOn);
+  if(bg.type==='image' && bg.data) w.style.backgroundImage=`url(${bg.data})`;
+  if(bg.type==='video' && bg.data){const v=document.createElement('video'); v.src=bg.data; v.autoplay=true; v.loop=true; v.muted=true; v.playsInline=true; v.style.objectFit=fit==='stretch'?'fill':fit; w.appendChild(v);}
+  ['bg-fit-select','bg-fit-select-top'].forEach(id=>{if($(id)) $(id).value=fit});
+}
+function render(){
+  applyTheme(); applyBackground();
+  if($('project-name')) $('project-name').value=state.name||'';
+  if(root) root.innerHTML='';
+  (state.overlays||[]).forEach(o=>root.appendChild(renderOverlay(o)));
+  drawConnections(); renderConnectionList(); updateSelectionHud(); syncJsonNoDirty(); updateProjectSaveStatus();
+}
+function syncJsonNoDirty(){const el=$('project-json'); if(el) el.value=JSON.stringify(state,null,2)}
+function renderOverlay(o){
+  const el=document.createElement('div');
+  el.id=o.id; el.className=`overlay ${o.type||'widget'}`;
+  if(o.id===selectedId) el.classList.add('selected');
+  ['ghost','blend','invisible-item','text-only','text-breathe','show-input','input-ghost','manual-input'].forEach(c=>{if(o[c.replaceAll('-','')]||o[c]) el.classList.add(c)});
+  if(o.type==='chat'){
+    if(o.textOnly) el.classList.add('text-only'); if(o.textBreathe) el.classList.add('text-breathe'); if(o.showInputInTextOnly) el.classList.add('show-input'); if(o.inputGhost) el.classList.add('input-ghost'); if(o.manualInput) el.classList.add('manual-input');
+  }
+  if(o.blend) el.classList.add('blend'); if(o.ghost) el.classList.add('ghost'); if(o.invisible) el.classList.add('invisible-item');
+  el.style.left=pxX(o.x)+'px'; el.style.top=pxY(o.y)+'px'; el.style.width=(o.w||160)+'px'; el.style.height=(o.h||120)+'px';
+  el.style.opacity=o.opacity??.9; el.style.zIndex=o.z||zCounter; el.style.boxShadow=`0 0 ${o.glow||30}px rgba(34,211,238,.28)`;
+  el.style.setProperty('--chat-text-color',o.textColor||'var(--text)'); el.style.setProperty('--chat-text-opacity',o.textOpacity??1); el.style.setProperty('--chat-glow',(o.textGlow??14)+'px'); el.style.setProperty('--chat-shadow',(o.textShadow??8)+'px');
+  el.style.setProperty('--chat-input-opacity',o.inputOpacity??1); el.style.setProperty('--chat-input-height',(o.inputHeight??44)+'px'); el.style.setProperty('--chat-input-width',(o.inputWidth??100)+'%'); el.style.setProperty('--chat-input-font-size',(o.inputFontSize??17)+'px'); el.style.setProperty('--chat-input-x',(o.inputX??12)+'px'); el.style.setProperty('--chat-input-y',(o.inputY??180)+'px');
+  el.innerHTML=overlayHTML(o);
+  el.addEventListener('mousedown',e=>selectOverlay(o.id,e));
+  const handle=el.querySelector('.handle')||el; handle.addEventListener('mousedown',e=>startDrag(e,o.id));
+  addResizeHandles(el,o.id);
+  return el;
+}
+function overlayHTML(o){
+  if(o.type==='core') return `<div class="core-inner handle"><div class="core-icon">${o.icon||'◉'}</div><div class="core-name">${escapeHTML(o.label||'ZERO')}</div></div>`;
+  if(o.type==='node') return `<div class="handle" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center"><div class="icon">${o.icon||'◆'}</div><div class="name">${escapeHTML(o.label||'Node')}</div></div><div class="node-badge">${escapeHTML(o.action||o.role||'idle')}</div><div class="hover-title">${escapeHTML(o.label||'')}</div>`;
+  if(o.type==='chat') {
+    const msgs=(o.messages&&o.messages.length?o.messages:[{role:'zero',text:'Zero online.'},{role:'user',text:'Hello Zero.'},{role:'zero',text:'Runtime loader stable.'}]);
+    const fadeCls=o.fadeMode==='edge'?'edge-fade':o.fadeMode==='radial'?'radial-fade':'';
+    const overflowCls=o.overflowMode==='fade-old'?'fade-old':o.overflowMode==='compact'?'compact':o.overflowMode==='grow'?'grow-mode':'';
+    return `<div class="chat-head handle"><span>${escapeHTML(o.label||'ZERO CHAT')}</span><span>●</span></div><div class="chat-msgs ${fadeCls} ${overflowCls}" style="font-size:${o.textSize||17}px">${msgs.map(m=>`<div class="msg ${m.role==='user'?'user':'zero'}">${escapeHTML(m.text||'')}</div>`).join('')}</div><div class="chat-input"><input placeholder="Skriv till Zero" onkeydown="chatInputKey(event,'${o.id}')" onclick="event.stopPropagation()" onmousedown="event.stopPropagation()"/><button onclick="sendChatFromButton('${o.id}');event.stopPropagation()">↵</button></div><div class="chat-tools-mini edit-only"><button onclick="addChatTestMessage('${o.id}');event.stopPropagation()">+text</button><button onclick="clearChatMessages('${o.id}');event.stopPropagation()">clear</button></div>`;
+  }
+  if(o.type==='panel'){
+    ensurePanelPages(o); const page=o.pages[o.pageIndex||0];
+    return `<div class="panel-head handle"><span>${escapeHTML(page.title||o.label||'Panel')}</span><span class="panel-page-nav"><button onclick="cyclePanelPage('${o.id}',-1);event.stopPropagation()">‹</button><span class="panel-page-indicator">${(o.pageIndex||0)+1}/${o.pages.length}</span><button onclick="cyclePanelPage('${o.id}',1);event.stopPropagation()">›</button></span></div><div class="panel-body">${(page.items||[]).map(i=>`<div class="item"><span>${escapeHTML(i)}</span><span class="dot"></span></div>`).join('')}</div>`;
+  }
+  if(o.type==='panelSwitcher') return `<div class="switch-inner handle">${escapeHTML(o.label||'Panel switcher')}</div>`;
+  if(o.type==='widget' && o.kind==='clock') return `<div class="body handle"><div class="clock" id="clock_${o.id}">${new Date().toLocaleTimeString('sv-SE',{hour:'2-digit',minute:'2-digit'})}</div></div>`;
+  return `<div class="body handle">${escapeHTML(o.label||'Widget')}</div>`;
+}
+function escapeHTML(s){return String(s).replace(/[&<>'"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]))}
+function addResizeHandles(el,id){['r','l','b','t','br','bl','tr','tl'].forEach(h=>{const r=document.createElement('span');r.className=`resize rh-${h}`;r.addEventListener('mousedown',e=>startResize(e,id,h));el.appendChild(r)})}
+function selectOverlay(id,e){if(runtime)return; selectedId=id; zCounter++; const o=overlay(id); if(o)o.z=zCounter; updateInspector(); render(); if(e)e.stopPropagation();}
+function startDrag(e,id){if(runtime||e.target.classList.contains('resize')||traceEditing)return; e.preventDefault(); const o=overlay(id); if(!o)return; dragState={id,sx:e.clientX,sy:e.clientY,x:pxX(o.x),y:pxY(o.y)}; document.addEventListener('mousemove',moveDrag); document.addEventListener('mouseup',stopDrag)}
+function moveDrag(e){if(!dragState)return; const o=overlay(dragState.id); if(!o)return; o.x=nx(dragState.x+e.clientX-dragState.sx); o.y=ny(dragState.y+e.clientY-dragState.sy); const el=$(o.id); if(el){el.style.left=pxX(o.x)+'px';el.style.top=pxY(o.y)+'px'} drawConnections();}
+function stopDrag(){if(dragState){dragState=null;syncJson()} document.removeEventListener('mousemove',moveDrag);document.removeEventListener('mouseup',stopDrag)}
+function startResize(e,id,h){if(runtime)return; e.preventDefault();e.stopPropagation(); const o=overlay(id); if(!o)return; resizeState={id,h,sx:e.clientX,sy:e.clientY,x:pxX(o.x),y:pxY(o.y),w:o.w,h0:o.h}; document.addEventListener('mousemove',moveResize); document.addEventListener('mouseup',stopResize)}
+function moveResize(e){if(!resizeState)return; const o=overlay(resizeState.id); if(!o)return; let dx=e.clientX-resizeState.sx, dy=e.clientY-resizeState.sy; let x=resizeState.x,y=resizeState.y,w=resizeState.w,h=resizeState.h0; if(resizeState.h.includes('r')) w=Math.max(50,w+dx); if(resizeState.h.includes('b')) h=Math.max(40,h+dy); if(resizeState.h.includes('l')){w=Math.max(50,w-dx);x=x+dx} if(resizeState.h.includes('t')){h=Math.max(40,h-dy);y=y+dy} o.x=nx(x);o.y=ny(y);o.w=w;o.h=h; render();}
+function stopResize(){if(resizeState){resizeState=null;syncJson()} document.removeEventListener('mousemove',moveResize);document.removeEventListener('mouseup',stopResize)}
+function updateSelectionHud(){const el=$('selectionHud'); if(el) el.textContent='SELECTED: '+(selectedId||'none')}
+function updateInspector(){const o=overlay(selectedId); if(!o)return; if($('sel-label')) $('sel-label').value=o.label||''; if($('action-binding')) $('action-binding').value=o.action||''; if($('node-action-binding')) $('node-action-binding').value=o.action||''; if($('node-role')) $('node-role').value=o.role||''; if($('node-action-label')) $('node-action-label').value=o.label||''; if($('opacity')) $('opacity').value=Math.round((o.opacity??1)*100); if($('glow')) $('glow').value=o.glow||0; if($('chat-overflow-mode')) $('chat-overflow-mode').value=o.overflowMode||'scroll'; if($('chat-fade-mode')) $('chat-fade-mode').value=o.fadeMode||'none';}
+function ensurePanelPages(o){if(!o.pages||!o.pages.length)o.pages=[{title:o.label||'Panel',items:['Item 1','Item 2','Item 3']}]; if(o.pageIndex==null)o.pageIndex=0;}
+function cyclePanelPage(id,dir){const o=overlay(id); if(!o)return; ensurePanelPages(o); o.pageIndex=(o.pageIndex+dir+o.pages.length)%o.pages.length; render(); syncJson();}
+
+function drawConnections(){
+  if(!svg)return;
+  svg.innerHTML=''; svg.setAttribute('width',innerWidth); svg.setAttribute('height',innerHeight);
+  (state.connections||[]).forEach((c,i)=>{
+    const a=overlay(c.from), b=overlay(c.to); if(!a||!b)return;
+    c.metric=c.metric||'context'; c.visual=c.visual||'energy';
+    const pts=[{x:pxX(a.x)+(a.w||0)/2,y:pxY(a.y)+(a.h||0)/2},...(c.points||[]).map(p=>({x:pxX(p.x),y:pxY(p.y)})),{x:pxX(b.x)+(b.w||0)/2,y:pxY(b.y)+(b.h||0)/2}];
+    const d='M '+pts.map(p=>`${p.x} ${p.y}`).join(' L ');
+    const halo=document.createElementNS('http://www.w3.org/2000/svg','path');
+    halo.setAttribute('d',d);
+    halo.setAttribute('fill','none');
+    halo.setAttribute('stroke',connectionColor(c));
+    halo.setAttribute('stroke-width',i===selectedConnectionIndex?12:8);
+    halo.setAttribute('stroke-linecap','round');
+    halo.setAttribute('opacity',i===selectedConnectionIndex?0.28:0.16);
+    halo.style.filter='drop-shadow(0 0 22px '+connectionColor(c)+')';
+    svg.appendChild(halo);
+
+    const path=document.createElementNS('http://www.w3.org/2000/svg','path');
+    path.setAttribute('d',d); path.setAttribute('fill','none'); path.setAttribute('stroke',connectionColor(c)); path.setAttribute('stroke-width',i===selectedConnectionIndex?4.8:3.2); path.setAttribute('stroke-linecap','round'); path.setAttribute('opacity',(i===selectedConnectionIndex||c._active)?0.98:0.78);
+    path.classList.add('signal-path',c.metric||'context');
+    if(c._active==='out')path.classList.add('signal-active');
+    if(c._active==='return')path.classList.add('signal-return');
+    path.style.filter='drop-shadow(0 0 9px currentColor)';
+    path.onclick=()=>{selectedConnectionIndex=i;renderConnectionList(); syncSignalControls();};
+    svg.appendChild(path);
+    if(i===selectedConnectionIndex || c._active){
+      const mid=pts[Math.floor(pts.length/2)]||pts[0];
+      const label=document.createElementNS('http://www.w3.org/2000/svg','text');
+      label.setAttribute('x',mid.x+10); label.setAttribute('y',mid.y-10); label.setAttribute('class','signal-label');
+      label.textContent=(c.metric||'context')+' · '+(c.visual||'energy');
+      svg.appendChild(label);
+    }
+    if(c._active){
+      const particle=document.createElementNS('http://www.w3.org/2000/svg','text');
+      particle.setAttribute('class','signal-particle');
+      particle.textContent=signalParticle(c);
+      const motion=document.createElementNS('http://www.w3.org/2000/svg','animateMotion');
+      motion.setAttribute('dur',c._active==='return'?'.75s':'.62s');
+      motion.setAttribute('repeatCount','indefinite');
+      motion.setAttribute('path',c._active==='return'?reversePathD(pts):d);
+      particle.appendChild(motion); svg.appendChild(particle);
+    }
+  });
+}
+function styleColor(s){return {electric:'#22d3ee',plasma:'#a855f7',lava:'#fb7185',water:'#38bdf8',glow:'#fbbf24'}[s]||'#22d3ee'}
+function renderConnectionList(){const box=$('connection-list'); if(!box)return; box.innerHTML=''; (state.connections||[]).forEach((c,i)=>{const btn=document.createElement('button');btn.className='fullbtn';btn.textContent=(i===selectedConnectionIndex?'➤ ':'')+`${c.from} → ${c.to} · ${c.metric||'context'} · ${c.visual||'energy'}`;btn.onclick=()=>{selectedConnectionIndex=i; syncSignalControls(); drawConnections(); renderConnectionList();}; box.appendChild(btn);});}
+function setSelectedConnectionStyle(style){const c=state.connections?.[selectedConnectionIndex]; if(!c)return; c.style=style; drawConnections(); syncJson();}
+function connectSelectedToCore(){
+  if(!selectedId||selectedId==='zero_core')return toast('Välj ett objekt först');
+  state.connections=state.connections||[];
+  const from = selectedId;
+  const to = 'zero_core';
+  let existing=state.connections.find(c=>c.from===from&&c.to===to);
+  if(!existing){state.connections.push({from,to,style:'plasma',metric:overlay(from)?.type==='chat'?'context':'resonance',visual:overlay(from)?.type==='chat'?'energy':'gold',points:[]}); selectedConnectionIndex=state.connections.length-1;}
+  syncJson(); render(); toast(`${from} connected → core`);
+}
+function deleteSelectedConnection(){if(!state.connections?.length)return; state.connections.splice(selectedConnectionIndex,1); selectedConnectionIndex=0; syncJson(); render();}
+function startTraceEditor(){traceEditing=true;traceDraft=[];document.body.classList.add('trace-editing');toast('Trace edit: klicka punkter')}
+function finishTraceEditor(){const c=state.connections?.[selectedConnectionIndex]; if(c)c.points=traceDraft.map(p=>({x:nx(p.x),y:ny(p.y)})); traceEditing=false;traceDraft=[];document.body.classList.remove('trace-editing');document.querySelectorAll('.trace-point').forEach(p=>p.remove());syncJson();render();}
+function cancelTraceEditor(){traceEditing=false;traceDraft=[];document.body.classList.remove('trace-editing');document.querySelectorAll('.trace-point').forEach(p=>p.remove());drawConnections();}
+function clearSelectedTrace(){const c=state.connections?.[selectedConnectionIndex]; if(c)c.points=[]; syncJson();render();}
+function spawnTracePoint(x,y){const p=document.createElement('div');p.className='trace-point';p.style.left=x+'px';p.style.top=y+'px';document.body.appendChild(p)}
+document.addEventListener('click',e=>{if(traceEditing){traceDraft.push({x:e.clientX,y:e.clientY});spawnTracePoint(e.clientX,e.clientY);drawConnections();}});
+
+function addCore(){addOverlay({type:'core',label:'ZERO CORE',icon:'◉',w:150,h:150,x:.45,y:.42,opacity:.9,glow:50,core:true})}
+function addChat(){addOverlay({type:'chat',label:'ZERO CHAT',w:420,h:230,x:.38,y:.55,opacity:.75,glow:24,textSize:17,inputWidth:100,inputHeight:44,overflowMode:'scroll',messages:[{role:'zero',text:'Zero online.'}]})}
+function addNode(){addOverlay({type:'node',label:'Module',icon:'◆',w:118,h:118,x:.45,y:.25,opacity:.9,glow:34,role:'tool',action:'tool.action'})}
+function addPanel(){addOverlay({type:'panel',label:'New Panel',w:295,h:360,x:.05,y:.22,opacity:.78,glow:18,pages:[{title:'Page 1',items:['Item 1','Item 2','Item 3']},{title:'Page 2',items:['Signal','Coherence','Runtime']}],pageIndex:0})}
+function addPanelSwitcher(){addOverlay({type:'panelSwitcher',label:'Panel Switcher',w:230,h:52,x:.08,y:.12,opacity:.82,glow:18})}
+function addWidget(kind){addOverlay({type:'widget',kind,label:kind==='clock'?'Clock':'Note',w:220,h:110,x:.4,y:.1,opacity:.8,glow:20})}
+function addOverlay(o){o.id=o.id||uid(o.type||'item'); rememberPreviousProject(); state.overlays.push(o); selectedId=o.id; hideWelcome(); render(); syncJson();}
+function duplicateSelected(){const o=overlay(selectedId); if(!o)return; const n=safeClone(o); n.id=uid(o.type); n.x=Math.min(.9,o.x+.03); n.y=Math.min(.9,o.y+.03); state.overlays.push(n); selectedId=n.id; render(); syncJson();}
+function deleteSelected(){if(!selectedId)return; state.overlays=state.overlays.filter(o=>o.id!==selectedId); state.connections=(state.connections||[]).filter(c=>c.from!==selectedId&&c.to!==selectedId); selectedId=null; render(); syncJson();}
+function toggleGhost(){const o=overlay(selectedId); if(o){o.ghost=!o.ghost; render(); syncJson();}}
+function toggleBlend(){const o=overlay(selectedId); if(o){o.blend=!o.blend; render(); syncJson();}}
+function toggleInvisibleSelected(){const o=overlay(selectedId); if(o){o.invisible=!o.invisible; render(); syncJson();}}
+function toggleRevealInvisible(){document.body.classList.toggle('reveal-invisible')}
+function renameSelected(v){const o=overlay(selectedId); if(o){o.label=v; syncJson(); render();}}
+function setAccent(v){state.accent=v; render(); syncJson();}
+function setSelectedOpacity(v){const o=overlay(selectedId); if(o){o.opacity=+v/100; if($('op-val'))$('op-val').textContent=v+'%'; render(); syncJson();}}
+function setSelectedGlow(v){const o=overlay(selectedId); if(o){o.glow=+v; if($('glow-val'))$('glow-val').textContent=v+'px'; render(); syncJson();}}
+function alignSelected(where){const o=overlay(selectedId); if(!o)return; if(where==='center'){o.x=.5-(o.w/innerWidth)/2;o.y=.5-(o.h/innerHeight)/2} if(where==='bottom'){o.y=.88-(o.h/innerHeight)} render(); syncJson();}
+function toggleTextOnly(){const o=overlay(selectedId); if(o?.type==='chat'){o.textOnly=!o.textOnly;render();syncJson();}}
+function toggleTextBreathe(){const o=overlay(selectedId); if(o?.type==='chat'){o.textBreathe=!o.textBreathe;render();syncJson();}}
+function setChatTextColor(v){const o=overlay(selectedId); if(o?.type==='chat'){o.textColor=v;render();syncJson();}}
+function setChatTextSize(v){const o=overlay(selectedId); if(o?.type==='chat'){o.textSize=+v;if($('chat-text-size-val'))$('chat-text-size-val').textContent=v+'px';render();syncJson();}}
+function setChatTextOpacity(v){const o=overlay(selectedId); if(o?.type==='chat'){o.textOpacity=+v/100;if($('chat-text-opacity-val'))$('chat-text-opacity-val').textContent=v+'%';render();syncJson();}}
+function setChatTextGlow(v){const o=overlay(selectedId); if(o?.type==='chat'){o.textGlow=+v;if($('chat-text-glow-val'))$('chat-text-glow-val').textContent=v+'px';render();syncJson();}}
+function setChatTextShadow(v){const o=overlay(selectedId); if(o?.type==='chat'){o.textShadow=+v;if($('chat-text-shadow-val'))$('chat-text-shadow-val').textContent=v+'px';render();syncJson();}}
+function toggleTextOnlyInput(){const o=overlay(selectedId); if(o?.type==='chat'){o.showInputInTextOnly=!o.showInputInTextOnly;render();syncJson();}}
+function toggleInputGhost(){const o=overlay(selectedId); if(o?.type==='chat'){o.inputGhost=!o.inputGhost;render();syncJson();}}
+function setChatInputOpacity(v){const o=overlay(selectedId); if(o?.type==='chat'){o.inputOpacity=+v/100;if($('chat-input-opacity-val'))$('chat-input-opacity-val').textContent=v+'%';render();syncJson();}}
+function setChatInputHeight(v){const o=overlay(selectedId); if(o?.type==='chat'){o.inputHeight=+v;if($('chat-input-height-val'))$('chat-input-height-val').textContent=v+'px';render();syncJson();}}
+function setChatInputWidth(v){const o=overlay(selectedId); if(o?.type==='chat'){o.inputWidth=+v;if($('chat-input-width-val'))$('chat-input-width-val').textContent=v+'%';render();syncJson();}}
+function setChatInputFontSize(v){const o=overlay(selectedId); if(o?.type==='chat'){o.inputFontSize=+v;if($('chat-input-font-size-val'))$('chat-input-font-size-val').textContent=v+'px';render();syncJson();}}
+function setChatFadeMode(v){const o=overlay(selectedId); if(o?.type==='chat'){o.fadeMode=v;render();syncJson();}}
+function setChatOverflowMode(v){const o=overlay(selectedId); if(o?.type==='chat'){o.overflowMode=v;render();syncJson();}}
+function getChatTarget(id){let o=id?overlay(id):overlay(selectedId); if(!o||o.type!=='chat'){toast('Välj en Chat Overlay först');return null} return o}
+function chatInputKey(e,id){if(e.key==='Enter'){e.preventDefault();sendChatMessage(id,e.target.value);e.target.value='';}}
+function sendChatFromButton(id){const el=document.querySelector('#'+CSS.escape(id)+' .chat-input input'); if(el){sendChatMessage(id,el.value);el.value='';}}
+function sendChatMessage(id,text){const o=getChatTarget(id); if(!o)return; text=String(text||'').trim(); if(!text)return; o.messages=o.messages||[]; o.messages.push({role:'user',text}); triggerChatCoreSignal(o.id,text); setTimeout(()=>{o.messages.push({role:'zero',text:demoZeroReply(text)}); if(o.overflowMode==='grow'){o.h=Math.min(560,(o.h||230)+44)} render(); syncJson(); setTimeout(()=>{const box=document.querySelector('#'+CSS.escape(o.id)+' .chat-msgs'); if(box)box.scrollTop=box.scrollHeight;},0)},520); render(); syncJson(); setTimeout(()=>{const box=document.querySelector('#'+CSS.escape(o.id)+' .chat-msgs'); if(box)box.scrollTop=box.scrollHeight;},0)}
+function demoZeroReply(text){const samples=['Jag hör dig. Layouten håller fortfarande ihop.','Signal mottagen. Mer text betyder bättre stresstest.','Zero svarar lokalt i UI-testläge.','Bra. Nu ser vi hur chatboxen beter sig när flödet växer.']; if(/hjälp|help/i.test(text))return 'Tips: Style → När chatten blir full styr scroll, fade, compact eller grow.'; return samples[Math.floor(Math.random()*samples.length)];}
+function addChatTestMessage(id){const o=getChatTarget(id); if(!o)return; o.messages=o.messages||[]; const n=o.messages.length+1; o.messages.push({role:n%2?'zero':'user',text:'Testmeddelande '+n+' — längre rad för att se radbrytning, fade och boxhöjd.'}); if(o.overflowMode==='grow')o.h=Math.min(560,(o.h||230)+30); render(); syncJson();}
+function clearChatMessages(id){const o=getChatTarget(id); if(!o)return; o.messages=[{role:'zero',text:'Chat cleared. Skriv direkt här för att testa.'}]; render(); syncJson();}
+
+function setChatManualInput(v){const o=overlay(selectedId); if(o?.type==='chat'){o.manualInput=!!v;render();syncJson();}}
+function setChatInputX(v){const o=overlay(selectedId); if(o?.type==='chat'){o.inputX=+v;render();syncJson();}}
+function setChatInputY(v){const o=overlay(selectedId); if(o?.type==='chat'){o.inputY=+v;render();syncJson();}}
+function updateChatInputLabels(){}
+function setNodeRole(v){const o=overlay(selectedId); if(o){o.role=v;syncJson();render();}}
+function setActionPreset(v){if(v)setActionBinding(v)}
+function setActionBinding(v){const o=overlay(selectedId); if(o){o.action=v;syncJson();render();}}
+function setNodeStatus(id,status){const el=$(id); if(el){el.classList.remove('status-running','status-ok','status-error'); if(status)el.classList.add('status-'+status)}}
+function runSelectedAction(){const o=overlay(selectedId); if(!o)return toast('Välj node först'); actionLog(`RUN ${o.action||o.label}`); setNodeStatus(o.id,'running'); setTimeout(()=>{setNodeStatus(o.id,'ok'); actionLog(`OK ${o.action||o.label}`)},650)}
+function actionLog(t){const el=$('action-log'); if(el)el.value=`[${new Date().toLocaleTimeString('sv-SE')}] ${t}\n`+el.value;}
+function clearActionLog(){if($('action-log'))$('action-log').value=''}
+function setBackendUrl(v){state.backendUrl=v;syncJson()}
+function toggleBackendMode(){state.backendMode=!state.backendMode; if($('backend-mode-label'))$('backend-mode-label').textContent='Mode: '+(state.backendMode?'backend URL':'local demo actions');syncJson()}
+function activateConnectionsForNode(){}
+function runLocalDemoAction(){}
+
+
+function connectionColor(c){
+  const v=c.visual||'energy', m=c.metric||'context';
+  if(v==='gold'||m==='resonance')return '#fbbf24';
+  if(v==='matrix'||m==='code')return '#00ff99';
+  if(v==='goo'||m==='vibes')return '#1f1b24';
+  if(v==='chunks'||m==='image')return '#a78bfa';
+  if(m==='memory')return '#38bdf8';
+  if(m==='tools')return '#fb7185';
+  return styleColor(c.style)||'#22d3ee';
+}
+function signalParticle(c){
+  const v=c.visual||'energy', m=c.metric||'context';
+  if(v==='matrix'||m==='code')return '{}';
+  if(v==='emoji')return inferSignalEmoji(lastChatText||'');
+  if(v==='goo')return '▓';
+  if(v==='chunks'||m==='image')return '▣';
+  if(m==='memory')return '◇';
+  if(m==='tools')return '⚙';
+  if(v==='gold'||m==='resonance')return '✦';
+  return '●';
+}
+function inferSignalEmoji(text){
+  text=String(text||'').toLowerCase();
+  if(/kod|code|html|css|javascript|python|bug|api|linux|server/.test(text))return '{}';
+  if(/bild|image|foto|visual|design/.test(text))return '▣';
+  if(/problem|fel|strul|kris|trasig|dålig/.test(text))return '▓';
+  if(/kärlek|bra|glad|guld|vacker|inspiration|wow/.test(text))return '✨';
+  return '●';
+}
+function reversePathD(pts){const r=[...pts].reverse(); return 'M '+r.map(p=>`${p.x} ${p.y}`).join(' L ')}
+function syncSignalControls(){const c=state.connections?.[selectedConnectionIndex]; if(!c)return; if($('trace-style'))$('trace-style').value=c.style||'glow'; if($('signal-metric'))$('signal-metric').value=c.metric||'context'; if($('signal-visual'))$('signal-visual').value=c.visual||'energy';}
+function setSelectedConnectionMetric(v){const c=state.connections?.[selectedConnectionIndex]; if(!c)return; c.metric=v; drawConnections(); renderConnectionList(); syncJson();}
+function setSelectedConnectionVisual(v){const c=state.connections?.[selectedConnectionIndex]; if(!c)return; c.visual=v; drawConnections(); renderConnectionList(); syncJson();}
+function findConnection(from,to){return (state.connections||[]).findIndex(c=>c.from===from&&c.to===to)}
+function ensureConnection(from,to,metric='context',visual='energy'){state.connections=state.connections||[]; let i=findConnection(from,to); if(i<0){state.connections.push({from,to,style:'plasma',metric,visual,points:[]}); i=state.connections.length-1;} return i;}
+function pulseConnection(i,dir='out',ms=1050){const c=state.connections?.[i]; if(!c)return; c._active=dir; selectedConnectionIndex=i; drawConnections(); renderConnectionList(); setTimeout(()=>{if(c._active===dir){delete c._active; drawConnections();}},ms);}
+function testSelectedSignal(){pulseConnection(selectedConnectionIndex,'out',1600); const c=state.connections?.[selectedConnectionIndex]; if(c?.to==='zero_core')flashCore();}
+function flashCore(){const el=$('zero_core'); if(!el)return; el.classList.add('processing'); setTimeout(()=>el.classList.remove('processing'),1300)}
+let lastChatText='';
+function autoSignalMetricForText(text){
+  const t=String(text||'').toLowerCase();
+  if(/kod|code|html|css|javascript|python|bug|api|linux|server|function|class/.test(t))return ['code','matrix'];
+  if(/bild|image|foto|analysera|visual|design|layout/.test(t))return ['image','chunks'];
+  if(/problem|fel|strul|kris|trasig|dålig|hjälp/.test(t))return ['vibes','goo'];
+  if(/minne|memory|remember|context|kontext/.test(t))return ['memory','gold'];
+  if(/kärlek|bra|glad|guld|vacker|inspiration|wow|yes|precis/.test(t))return ['resonance','gold'];
+  return ['context','energy'];
+}
+function triggerChatCoreSignal(chatId,text){
+  lastChatText=text||'';
+  const [metric,visual]=autoSignalMetricForText(text);
+  const i=ensureConnection(chatId,'zero_core',metric,visual);
+  const c=state.connections[i]; c.metric=metric; c.visual=visual;
+  pulseConnection(i,'out',1150); flashCore();
+  setTimeout(()=>pulseConnection(i,'return',950),980);
+}
+function toggleTopbarMini(){const tb=$('topbar'); tb.classList.toggle('mini-topbar'); toast(tb.classList.contains('mini-topbar')?'Topbar hides until hover':'Topbar visible')}
+function toggleTopbarFree(){const tb=$('topbar'); tb.classList.toggle('free-topbar'); toast(tb.classList.contains('free-topbar')?'Topbar movable mode':'Topbar centered')}
+let topbarDrag=null;
+function initTopbarDrag(){const tb=$('topbar'); if(!tb)return; tb.addEventListener('mousedown',e=>{if(!tb.classList.contains('free-topbar'))return; if(e.target.closest('button'))return; topbarDrag={sx:e.clientX,sy:e.clientY,left:tb.offsetLeft,top:tb.offsetTop}; document.addEventListener('mousemove',moveTopbarDrag); document.addEventListener('mouseup',stopTopbarDrag);});}
+function moveTopbarDrag(e){if(!topbarDrag)return; const tb=$('topbar'); tb.style.left=Math.max(0,topbarDrag.left+e.clientX-topbarDrag.sx)+'px'; tb.style.top=Math.max(0,topbarDrag.top+e.clientY-topbarDrag.sy)+'px'; tb.style.transform='none';}
+function stopTopbarDrag(){topbarDrag=null; document.removeEventListener('mousemove',moveTopbarDrag); document.removeEventListener('mouseup',stopTopbarDrag)}
+
+function chooseBackground(){$('bg-upload')?.click()}
+function handleBackgroundInput(e){const f=e.target.files?.[0]; if(f)setBackgroundFile(f)}
+function setBackgroundFile(f){const r=new FileReader(); r.onload=ev=>{state.background={type:f.type.startsWith('video/')?'video':'image',data:ev.target.result,name:f.name,fit:state.background?.fit||'contain',forge:defaultForge()}; hideWelcome(); render(); syncJson(); toast('Background loaded')}; r.readAsDataURL(f)}
+function clearBackground(){state.background={type:'generated',data:null,fit:'contain',forge:defaultForge()};render();syncJson();}
+function setBackgroundFit(v){state.background=state.background||{};state.background.fit=v;render();syncJson();}
+function toggleTheme(){state.theme=state.theme==='light'?'dark':'light';render();syncJson();}
+function setBgForge(k,v){state.background=state.background||{};state.background.forge=Object.assign(defaultForge(),state.background.forge||{});state.background.forge[k]=+v; const lab=$(kebabId(k)+'-val'); if(lab)lab.textContent=(k.includes('Strength')||k==='brightness'||k==='contrast'||k==='zoom'||k==='glowX'||k==='glowY'||k==='fogStrength')?v+'%':v; render();syncJson();}
+function kebabId(s){return s.replace(/[A-Z]/g,m=>'-'+m.toLowerCase()).replace('pos-x','posx').replace('pos-y','posy')}
+function rotateBackground90(deg){state.background.forge=Object.assign(defaultForge(),state.background?.forge||{});state.background.forge.rotate=(state.background.forge.rotate+deg)%360;render();syncJson();}
+function rotateBackground180(){rotateBackground90(180)}
+function resetForge(){state.background.forge=defaultForge();render();syncJson();}
+function toggleFxLayer(){state.background.forge=Object.assign(defaultForge(),state.background?.forge||{});state.background.forge.fxOn=!state.background.forge.fxOn;render();syncJson();}
+function freezeBackground(){toast('Freeze är parkerad i v0.7.5 living-connection')}
+function showFrozenInfo(){alert('Freeze background är inte aktiv i denna rescue-patch ännu.')}
+
+document.addEventListener('dragover',e=>{e.preventDefault();document.body.classList.add('dragging')});
+document.addEventListener('dragleave',()=>document.body.classList.remove('dragging'));
+document.addEventListener('drop',e=>{e.preventDefault();document.body.classList.remove('dragging'); const f=e.dataTransfer.files?.[0]; if(f){ if(f.name.toLowerCase().endsWith('.zip')||f.name.toLowerCase().endsWith('.json')) importProjectFile(f); else setBackgroundFile(f); }});
+
+function applyJson(){try{rememberPreviousProject(); state=normalizeProject(JSON.parse($('project-json').value)); selectedId=null; hideWelcome(); render(); toast('JSON applied')}catch(e){toast('JSON error: '+e.message)}}
+function saveLocal(){localStorage.setItem('zero_ui_studio_project',JSON.stringify(state));toast('Legacy saved')}
+function loadLocal(){const raw=localStorage.getItem('zero_ui_studio_project'); if(!raw)return toast('No legacy save'); state=normalizeProject(JSON.parse(raw));hideWelcome();render();}
+function downloadProject(){downloadBlob(new Blob([JSON.stringify(state,null,2)],{type:'application/json'}), sanitizeFileName(state.id||'zero_project')+'.json')}
+function handleProjectImport(e){const f=e.target.files?.[0]; if(f)importProjectFile(f); e.target.value=''}
+async function importProjectFile(f){try{rememberPreviousProject(); let scene;if(f.name.toLowerCase().endsWith('.zip')) scene=await loadSceneFromZip(f); else scene=JSON.parse(await f.text()); state=normalizeProject(scene); selectedId=null; hideWelcome(); render(); saveProjectToKey(projectStorageKey(),'Imported project'); toast(f.name.toLowerCase().endsWith('.zip')?'ZIP loaded: scene.json':'Project JSON loaded')}catch(e){console.error(e); toast('Import failed: '+e.message); alert('Import failed: '+e.message)}}
+function normalizeProject(p){if(!p||typeof p!=='object')throw new Error('Invalid project'); p.overlays=p.overlays||[]; p.connections=p.connections||[]; p.background=p.background||{type:'generated',fit:'contain',forge:defaultForge()}; p.background.forge=Object.assign(defaultForge(),p.background.forge||{}); p.meta=Object.assign({version:'0.7.5-living-connection'},p.meta||{}); return p;}
+async function loadSceneFromZip(file){const buf=await file.arrayBuffer(); const files=unzipStoreOnly(new Uint8Array(buf)); const key=Object.keys(files).find(k=>/scene\.json$/i.test(k))||Object.keys(files).find(k=>/\.json$/i.test(k)); if(!key)throw new Error('No scene.json found in ZIP'); const text=new TextDecoder().decode(files[key]); return JSON.parse(text)}
+function saveProjectToKey(key,msg){localStorage.setItem(key,JSON.stringify(state)); if(msg)toast(msg); updateProjectSaveStatus()}
+function loadProjectFromKey(key){const raw=localStorage.getItem(key); if(!raw)return false; rememberPreviousProject(); state=normalizeProject(JSON.parse(raw)); selectedId=null; hideWelcome(); render(); return true;}
+function saveNamedProject(){saveProjectToKey(projectStorageKey(),'Project saved to browser')}
+function loadNamedProject(){if(!loadProjectFromKey(projectStorageKey()))toast('No saved browser project')}
+function loadLastAutosave(){if(!loadProjectFromKey(autosaveKey()))toast('No autosave found')}
+function restorePreviousProject(){if(!loadProjectFromKey(previousKey()))toast('No previous project found')}
+function updateProjectSaveStatus(){const el=$('project-save-status'); if(!el)return; const saved=!!localStorage.getItem(projectStorageKey()); el.textContent='Browser save slot: '+(saved?'saved':'empty')+(projectDirty?' · unsaved changes':'')}
+function autosaveCurrentProject(){try{localStorage.setItem(autosaveKey(),JSON.stringify(state));}catch(e){}}
+function sanitizeFileName(s){return String(s||'zero_project').toLowerCase().replace(/[^a-z0-9åäö_-]+/gi,'_').replace(/^_+|_+$/g,'')||'zero_project'}
+
+function startNewProjectWizard(name){pendingTemplateName=name; $('newProjectGuide')?.classList.add('open'); if($('guideTitle'))$('guideTitle').textContent='Create '+name;}
+function closeNewProjectGuide(){$('newProjectGuide')?.classList.remove('open')}
+function guideContinue(){loadTemplate(pendingTemplateName||'blank');closeNewProjectGuide()}
+function guideChooseBackground(){chooseBackground();guideContinue()}
+function confirmLoadTemplate(name){if(projectDirty&&!confirm('Ladda template? Nuvarande projekt sparas som previous project först.'))return; loadTemplate(name)}
+function baseProject(){return {id:'blank_project',name:'Blank Project',theme:'dark',accent:'#22d3ee',background:{type:'generated',data:null,fit:'contain',forge:defaultForge()},overlays:[],connections:[],meta:{version:'0.7.5-living-connection'}}}
+function zeroCircleTemplate(){return structuredClone(defaultProject)}
+function minimalHudTemplate(){const p=baseProject(); p.id='minimal_hud'; p.name='Minimal HUD'; p.overlays=[{id:'hud_chat',type:'chat',label:'HUD',x:.30,y:.68,w:620,h:180,opacity:.8,glow:20,textOnly:true,showInputInTextOnly:true,textSize:22,textColor:'#dffcff',overflowMode:'fade-old',messages:[{role:'zero',text:'HUD online.'}]}]; return p}
+function newBlankProject(){return baseProject()}
+function loadTemplate(name){rememberPreviousProject(); state=name==='zero_circle'?zeroCircleTemplate():name==='minimal_hud'?minimalHudTemplate():newBlankProject(); selectedId=null; hideWelcome(); render(); projectDirty=false; toast('Template loaded: '+name)}
+function loadZeroCircle(){loadTemplate('zero_circle')}
+
+function openSidebar(pane){const sb=$('sidebar'); if(sb)sb.classList.add('open'); if(pane)showPane(pane)}
+function closeSidebar(){$('sidebar')?.classList.remove('open')}
+function showPane(name){document.querySelectorAll('.pane').forEach(p=>p.classList.toggle('active',p.id==='pane-'+name));document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.pane===name)); if($('side-title'))$('side-title').textContent=name.toUpperCase();}
+function dockSidebar(pos){const sb=$('sidebar'); if(!sb)return; sb.classList.add('floating'); sb.style.transform=''; if(pos==='left'){sb.style.left='14px';sb.style.top='62px';sb.style.width='350px';sb.style.height='calc(100vh - 76px)'} if(pos==='right'){sb.style.left='calc(100vw - 364px)';sb.style.top='62px';sb.style.width='350px';sb.style.height='calc(100vh - 76px)'} if(pos==='center'){sb.style.left='50%';sb.style.top='90px';sb.style.transform='translateX(-50%)';sb.style.width='380px';sb.style.height='calc(100vh - 140px)'}}
+function initMovableSidebar(){const h=$('sidebar-drag-handle'),sb=$('sidebar'); if(!h||!sb||h.dataset.bound)return; h.dataset.bound='1'; h.addEventListener('mousedown',e=>{if(e.target.closest('button'))return; const r=sb.getBoundingClientRect(); sidebarDrag={sx:e.clientX,sy:e.clientY,left:r.left,top:r.top}; sb.style.left=r.left+'px';sb.style.top=r.top+'px';sb.style.right='auto';sb.style.bottom='auto'; document.addEventListener('mousemove',moveSidebarDrag);document.addEventListener('mouseup',stopSidebarDrag);});}
+function moveSidebarDrag(e){if(!sidebarDrag)return; const sb=$('sidebar'); sb.style.left=Math.max(0,sidebarDrag.left+e.clientX-sidebarDrag.sx)+'px'; sb.style.top=Math.max(0,sidebarDrag.top+e.clientY-sidebarDrag.sy)+'px'}
+function stopSidebarDrag(){sidebarDrag=null;document.removeEventListener('mousemove',moveSidebarDrag);document.removeEventListener('mouseup',stopSidebarDrag)}
+function toggleRuntime(){runtime=!runtime; document.body.classList.toggle('runtime',runtime); const b=$('modeBtn'); if(b)b.textContent=runtime?'Runtime Mode':'Edit Mode'; closeSidebar(); toast(runtime?'Runtime mode':'Edit mode')}
+function toggleHelp(){$('helpOverlay')?.classList.toggle('open'); showHelpTopic('basics')}
+function showHelpTopic(topic,el){document.querySelectorAll('.help-topic').forEach(t=>t.classList.remove('active')); if(el)el.classList.add('active'); const steps={basics:'<ol><li>Klicka ett objekt för att markera det.</li><li>Dra i rubriken/objektet för att flytta.</li><li>Dra hörnen för storlek.</li><li>Style-panelen ändrar vald overlay.</li><li>Delete tar bort vald overlay.</li></ol>',chat:'<ol><li>Välj <code>ZERO CHAT</code>.</li><li>Skriv direkt i input-rutan och tryck Enter.</li><li>Style → <code>När chatten blir full</code>: Scroll, Fade old, Compact eller Grow.</li><li><code>+ Test message</code> fyller chatten snabbt.</li><li>Text Only gömmer ramen/rubriken för HUD-känsla.</li></ol>',trace:'<ol><li>Skapa eller välj en node.</li><li>Klicka <code>Connect selected → core</code>.</li><li>Öppna Trace Lines.</li><li>Välj connection i listan.</li><li>Välj stil, metric och visual. Chat → Core pulserar automatiskt när du skickar text.</li><li>Starta trace edit och klicka punkter på canvasen.</li><li>Spara trace.</li></ol>',forge:'<ol><li>Ladda bakgrund.</li><li>Justera zoom, position, glow och fog.</li><li>Använd contain/cover beroende på om du vill se hela bilden eller fylla skärmen.</li><li>Spara projektfolder när du är nöjd.</li></ol>',invisible:'<ol><li>Välj objekt.</li><li>Toggle invisible/hover mode.</li><li>Show Invisible är safe mode när du redigerar dolda zoner.</li></ol>',runtime:'<ol><li>Klicka Edit Mode för att växla till Runtime.</li><li>I Runtime försvinner resize/edit-handtag.</li><li>Chatten går fortfarande att skriva i.</li><li>Export Live Runtime HTML för fristående cockpit.</li></ol>',templates:'<ol><li>Project → Templates.</li><li>Zero Circle är första riktiga UI-projektet.</li><li>Templates sparar previous project först.</li><li>Importera ZIP eller scene.json för att fortsätta senare.</li></ol>'}; if($('helpSteps'))$('helpSteps').innerHTML=steps[topic]||steps.basics;}
+function openHelpPanel(){openSidebar('project')}
+function showAllInvisibleFromHelp(){document.body.classList.add('reveal-invisible')}
+
+function dataUrlToBytes(dataUrl){if(!dataUrl)return null; const [meta,b64]=dataUrl.split(','); if(!b64)return null; const bin=atob(b64); const out=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++)out[i]=bin.charCodeAt(i); const mime=(meta.match(/data:([^;]+)/)||[])[1]||'application/octet-stream'; return {bytes:out,mime,ext:mime.includes('png')?'png':mime.includes('jpeg')?'jpg':mime.includes('webp')?'webp':mime.includes('mp4')?'mp4':'bin'} }
+function textBytes(s){return new TextEncoder().encode(s)}
+function crc32(buf){let c=~0; for(let i=0;i<buf.length;i++){c^=buf[i]; for(let k=0;k<8;k++)c=(c>>>1)^(0xEDB88320&-(c&1));} return ~c>>>0}
+function u16(n){return [n&255,(n>>>8)&255]}
+function u32(n){return [n&255,(n>>>8)&255,(n>>>16)&255,(n>>>24)&255]}
+function concatUint8(parts){let len=parts.reduce((a,p)=>a+p.length,0),out=new Uint8Array(len),o=0; for(const p of parts){out.set(p,o);o+=p.length} return out}
+function dosTimeDate(){const d=new Date(); const time=(d.getHours()<<11)|(d.getMinutes()<<5)|(d.getSeconds()/2|0); const date=((d.getFullYear()-1980)<<9)|((d.getMonth()+1)<<5)|d.getDate(); return {time,date}}
+function makeZip(files){const local=[],central=[]; let offset=0; const {time,date}=dosTimeDate(); for(const f of files){const name=textBytes(f.name); const data=f.bytes instanceof Uint8Array?f.bytes:new Uint8Array(f.bytes); const crc=crc32(data); const lh=concatUint8([new Uint8Array([0x50,0x4b,0x03,0x04]),new Uint8Array([...u16(20),...u16(0),...u16(0),...u16(time),...u16(date),...u32(crc),...u32(data.length),...u32(data.length),...u16(name.length),...u16(0)]),name]); local.push(lh,data); const cd=concatUint8([new Uint8Array([0x50,0x4b,0x01,0x02]),new Uint8Array([...u16(20),...u16(20),...u16(0),...u16(0),...u16(time),...u16(date),...u32(crc),...u32(data.length),...u32(data.length),...u16(name.length),...u16(0),...u16(0),...u16(0),...u16(0),...u32(0),...u32(offset)]),name]); central.push(cd); offset+=lh.length+data.length; } const centralBytes=concatUint8(central); const localBytes=concatUint8(local); const end=concatUint8([new Uint8Array([0x50,0x4b,0x05,0x06]),new Uint8Array([...u16(0),...u16(0),...u16(files.length),...u16(files.length),...u32(centralBytes.length),...u32(localBytes.length),...u16(0)])]); return concatUint8([localBytes,centralBytes,end]);}
+function unzipStoreOnly(bytes){const files={}; let i=0; const dec=new TextDecoder(); const get16=o=>bytes[o]|(bytes[o+1]<<8); const get32=o=>(bytes[o]|(bytes[o+1]<<8)|(bytes[o+2]<<16)|(bytes[o+3]<<24))>>>0; while(i<bytes.length-4){if(get32(i)!==0x04034b50){i++;continue} const method=get16(i+8); const compSize=get32(i+18); const nameLen=get16(i+26); const extraLen=get16(i+28); const name=dec.decode(bytes.slice(i+30,i+30+nameLen)); const start=i+30+nameLen+extraLen; const data=bytes.slice(start,start+compSize); if(method!==0)throw new Error('ZIP uses compression. Export from Studio uses store/no compression.'); files[name]=data; i=start+compSize;} return files;}
+function backgroundAssetInfo(){const bg=state.background; if(!bg?.data||!bg.data.startsWith('data:'))return null; return dataUrlToBytes(bg.data)}
+function projectBindings(){return {backendUrl:state.backendUrl||'http://localhost:8765/run_action',actions:(state.overlays||[]).filter(o=>o.action).map(o=>({id:o.id,label:o.label,role:o.role,action:o.action}))}}
+function buildProjectPackageFiles(){const folder=sanitizeFileName(state.id||state.name||'zero_project'); const scene=safeClone(state); const bg=backgroundAssetInfo(); if(bg){scene.background=safeClone(scene.background);scene.background.data=`assets/background.${bg.ext}`;scene.background.externalAsset=true;} const manifest={name:state.name,id:state.id,version:'0.7.5-living-connection',createdAt:new Date().toISOString(),entry:'scene.json',runtime:'runtime.html'}; const readme=`# ${state.name||'Zero UI Project'}\n\nImportera hela ZIP-filen direkt i Zero UI Studio v0.7.3, eller packa upp och importera scene.json.\n`; const files=[{name:`${folder}/scene.json`,bytes:textBytes(JSON.stringify(scene,null,2))},{name:`${folder}/manifest.json`,bytes:textBytes(JSON.stringify(manifest,null,2))},{name:`${folder}/runtime_bindings.json`,bytes:textBytes(JSON.stringify(projectBindings(),null,2))},{name:`${folder}/README.md`,bytes:textBytes(readme)},{name:`${folder}/runtime.html`,bytes:textBytes(buildRuntimeHTML(scene))}]; if(bg)files.push({name:`${folder}/assets/background.${bg.ext}`,bytes:bg.bytes}); return {folder,files};}
+function downloadProjectFolder(){try{const {folder,files}=buildProjectPackageFiles();downloadBlob(new Blob([makeZip(files)],{type:'application/zip'}),folder+'.zip');toast('Project folder ZIP exported')}catch(e){console.error(e);toast('ZIP export failed: '+e.message)}}
+function downloadBlob(blob,name){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),500)}
+function downloadRuntimeHTML(){downloadBlob(new Blob([buildRuntimeHTML(state)],{type:'text/html'}),sanitizeFileName(state.id||'zero_runtime')+'_runtime.html')}
+function buildRuntimeHTML(scene){const data=JSON.stringify(scene).replace(/</g,'\\u003c');return `<!DOCTYPE html><html lang="sv"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHTML(scene.name||'Zero Runtime')}</title><style>body{margin:0;background:#000;color:#dffcff;overflow:hidden;font-family:system-ui}.o{position:absolute;border:1px solid rgba(34,211,238,.3);background:rgba(4,10,24,.72);box-shadow:0 0 30px rgba(34,211,238,.18);display:flex;align-items:center;justify-content:center;text-align:center}.core,.node{border-radius:50%;font-weight:900}.chat,.panel{border-radius:18px;display:block;padding:12px;box-sizing:border-box}.bg{position:fixed;inset:0;background:center/contain no-repeat #000}.label{filter:drop-shadow(0 0 10px #22d3ee)}</style></head><body><div id="bg" class="bg"></div><div id="r"></div><script>const scene=${data};const r=document.getElementById('r'),bg=document.getElementById('bg');if(scene.background&&scene.background.data&&!scene.background.externalAsset)bg.style.backgroundImage='url('+scene.background.data+')';(scene.overlays||[]).forEach(o=>{const e=document.createElement('div');e.className='o '+o.type;e.style.left=(o.x*innerWidth)+'px';e.style.top=(o.y*innerHeight)+'px';e.style.width=(o.w||140)+'px';e.style.height=(o.h||90)+'px';e.style.opacity=o.opacity||.9;e.innerHTML='<div class="label">'+(o.icon?o.icon+'<br>':'')+(o.label||o.type)+'</div>';r.appendChild(e)});<\/script></body></html>`}
+
+window.addEventListener('resize',()=>render());
+window.addEventListener('keydown',e=>{if(e.key==='Delete')deleteSelected(); if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){e.preventDefault();saveNamedProject();}});
+setInterval(()=>{document.querySelectorAll('[id^="clock_"]').forEach(e=>e.textContent=new Date().toLocaleTimeString('sv-SE',{hour:'2-digit',minute:'2-digit'})); autosaveCurrentProject();},30000);
+
+
+/* v0.7.7 hardfix: DOM trace layer. Overrides SVG renderer so wires are impossible to hide behind canvas/background. */
+function ensureWireLayer(){
+  let layer=document.getElementById('wireLayer');
+  if(!layer){layer=document.createElement('div');layer.id='wireLayer';document.body.insertBefore(layer, document.getElementById('root'));}
+  return layer;
+}
+function clearWireLayer(){const layer=ensureWireLayer(); layer.innerHTML=''; return layer;}
+function pointForOverlayHard(o){return {x:pxX(o.x)+(o.w||120)/2, y:pxY(o.y)+(o.h||90)/2};}
+function drawWireSegment(layer,p1,p2,c,i,segIndex){
+  const dx=p2.x-p1.x, dy=p2.y-p1.y;
+  const len=Math.max(1,Math.hypot(dx,dy));
+  const ang=Math.atan2(dy,dx)*180/Math.PI;
+  const el=document.createElement('div');
+  el.className='wire-seg'+(i===selectedConnectionIndex?' selected':'')+(c._active?' active':'');
+  el.style.left=p1.x+'px'; el.style.top=p1.y+'px'; el.style.width=len+'px';
+  el.style.transform='rotate('+ang+'deg)';
+  el.style.color=connectionColor(c)||'#22d3ee';
+  el.style.boxShadow='0 0 14px '+(connectionColor(c)||'#22d3ee')+', 0 0 34px '+(connectionColor(c)||'#22d3ee');
+  el.title=(c.from||'?')+' → '+(c.to||'?')+' · '+(c.metric||'context')+' · '+(c.visual||'energy');
+  el.onclick=()=>{selectedConnectionIndex=i; renderConnectionList(); syncSignalControls(); drawConnections();};
+  layer.appendChild(el);
+}
+function addWireDot(layer,p,c){
+  const d=document.createElement('div'); d.className='wire-dot';
+  d.style.left=p.x+'px'; d.style.top=p.y+'px'; d.style.color=connectionColor(c)||'#22d3ee';
+  layer.appendChild(d);
+}
+function drawConnections(){
+  if(svg){svg.innerHTML=''; svg.setAttribute('width',innerWidth); svg.setAttribute('height',innerHeight); svg.style.display='none';}
+  const layer=clearWireLayer();
+  (state.connections||[]).forEach((c,i)=>{
+    const a=overlay(c.from), b=overlay(c.to); if(!a||!b)return;
+    c.metric=c.metric||'context'; c.visual=c.visual||'energy'; c.style=c.style||'glow';
+    const pts=[pointForOverlayHard(a),...(c.points||[]).map(p=>({x:pxX(p.x),y:pxY(p.y)})),pointForOverlayHard(b)];
+    for(let n=0;n<pts.length-1;n++) drawWireSegment(layer,pts[n],pts[n+1],c,i,n);
+    if(i===selectedConnectionIndex || c._active){
+      const mid=pts[Math.floor((pts.length-1)/2)] || pts[0];
+      const lab=document.createElement('div'); lab.className='wire-label-dom';
+      lab.style.left=(mid.x+14)+'px'; lab.style.top=(mid.y-26)+'px'; lab.style.color=connectionColor(c)||'#22d3ee';
+      lab.textContent=(c.metric||'context')+' · '+(c.visual||'energy');
+      layer.appendChild(lab);
+    }
+    if(c._active){
+      const end=c._active==='return'?pts[0]:pts[pts.length-1]; addWireDot(layer,end,c);
+    }
+  });
+}
+
+initMovableSidebar(); initTopbarDrag(); render(); updateProjectSaveStatus();
+
+</script>
+</body>
+</html>
