@@ -38,8 +38,10 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-load_dotenv()
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_ROOT = os.path.dirname(_HERE)
+sys.path.insert(0, _ROOT)
+load_dotenv(os.path.join(_ROOT, ".env"))
 
 from app.foundation import ZERO_ROOT, CONFIG_DIR
 from app.zero_engine import get_engine, ZeroEngine
@@ -127,6 +129,25 @@ class ZeroHandler(BaseHTTPRequestHandler):
             self._send_html(_read_ui())
             return
 
+        if path.startswith("/static/"):
+            fname = path[len("/static/"):]
+            static_path = __import__("pathlib").Path("/opt/zeropointai/next_zero/config") / fname
+            if os.path.isfile(static_path):
+                ext = os.path.splitext(fname)[1].lower()
+                mime = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
+                        "gif": "image/gif", "webp": "image/webp", "svg": "image/svg+xml"}.get(ext, "application/octet-stream")
+                with open(static_path, "rb") as f:
+                    data = f.read()
+                self.send_response(200)
+                self.send_header("Content-Type", mime)
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+            else:
+                self.send_response(404)
+                self.end_headers()
+            return
+
         if path == "/health":
             engine = self._get_engine()
             self._send_json({
@@ -174,6 +195,32 @@ class ZeroHandler(BaseHTTPRequestHandler):
             try:
                 from app.zero_gear import get_gear_status
                 self._send_json(get_gear_status())
+            except Exception as e:
+                self._send_json({"error": str(e)}, 500)
+            return
+
+        if path == "/monitor":
+            try:
+                from app import zero_monitor
+                import time
+                result = {
+                    "system": zero_monitor.get_system(),
+                    "gpu":    zero_monitor.get_gpu(),
+                    "ollama": zero_monitor.get_ollama(),
+                    "db":     zero_monitor.get_db(),
+                    "ts":     time.time(),
+                }
+                self._send_json(result)
+            except Exception as e:
+                self._send_json({"error": str(e)}, 500)
+            return
+
+        if path == "/router/commands":
+            try:
+                from app.router import INTENT_PATTERNS
+                cmds = [{"pattern": p, "action": a, "category": c}
+                        for p, a, c in INTENT_PATTERNS]
+                self._send_json({"commands": cmds, "total": len(cmds)})
             except Exception as e:
                 self._send_json({"error": str(e)}, 500)
             return
