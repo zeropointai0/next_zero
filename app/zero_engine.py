@@ -96,6 +96,13 @@ except ImportError:
     GEAR4_OK = False
     _Gear4Conductor = None
 from app.zero_gear import select as gear_select, GearContext, record_latency, response_needs_escalation
+
+# Steg 1: creativity-modulen (manuellt provider-val styr vilken modell som svarar).
+try:
+    from app.zero_creativity import run_single as _creativity_run_single
+    CREATIVITY_OK = True
+except ImportError:
+    CREATIVITY_OK = False
 def can_write_memory():
     from app.zero_memory_guard import can_write_memory as _cwm
     return _cwm()
@@ -569,6 +576,10 @@ class ZeroEngine:
         self.episode_id            = None
         self.gear4_active          = False
         self.gear4_abort           = False
+        # Steg 1: manuellt provider-val. Default = DEFAULT_PROVIDER.
+        # Detta styr alltid vilken provider som används. Gear nås aldrig.
+        self.creativity_provider   = normalize_provider_name(
+                                         os.getenv("DEFAULT_PROVIDER", "gemini"))
 
         try:
             init_db()
@@ -640,6 +651,65 @@ class ZeroEngine:
             g4 = self._run_gear4(user_input)
             if g4 is not None:
                 return g4
+
+        # ── CREATIVITY (steg 1): manuellt provider-val styr allt ──
+        # Gear4 och Gear nås aldrig när detta är aktivt. Det är avsiktligt.
+        if CREATIVITY_OK and self.creativity_provider:
+            messages = build_context_messages(session_id=self.session_id)
+            if attachments:
+                last_content = self._build_multimodal_content(user_input, attachments)
+                if messages:
+                    messages[-1] = {"role": "user", "content": last_content}
+                else:
+                    messages = [{"role": "user", "content": last_content}]
+            system = build_system_prompt(provider=self.creativity_provider,
+                                         session_id=self.session_id)
+
+            from app.zero_creativity import run_single
+            cres = run_single(
+                prompt   = user_input,
+                provider = self.creativity_provider,
+                messages = messages,
+                system   = system,
+                callers  = PROVIDER_CALLERS,
+                cost_fn  = calc_cost_sek,
+                engine   = self,
+                fallback_order = PROVIDER_FALLBACK_ORDER,
+            )
+
+            # ── PLATS FÖR FRAMTIDA GROUNDING / INTEGRITY (steg 2) ──
+            # Här läggs senare: integrity_analyze(...) asynkront,
+            # och ev. antenn (tool-anrop före generering).
+
+            self.last_latency           = cres.latency
+            self.last_thinking          = cres.thinking
+            self.session_cost          += cres.cost_sek
+            self.session_input_tokens  += cres.in_tok
+            self.session_output_tokens += cres.out_tok
+            self.session_calls         += 1
+            self.last_event             = user_input[:60]
+            self.provider               = cres.provider
+
+            if can_write_memory().get("ok"):
+                save_memory("assistant", cres.response, session_id=self.session_id)
+
+            self.msg_count += 1
+            if self.msg_count % 5 == 0:
+                self._reflect_async()
+
+            return {
+                "response":  cres.response,
+                "in_tok":    cres.in_tok,
+                "out_tok":   cres.out_tok,
+                "cost_sek":  cres.cost_sek,
+                "provider":  cres.provider,
+                "model":     cres.model,
+                "gear":      "creativity",
+                "thinking":  cres.thinking,
+                "latency":   cres.latency,
+                "fell_back": cres.fell_back,
+            }
+        # ── slut creativity-gren ──
 
         # Gear-val
         ctx      = GearContext(channel="chat", last_ollama_latency_ms=self.last_latency * 1000)

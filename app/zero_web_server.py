@@ -199,6 +199,18 @@ class ZeroHandler(BaseHTTPRequestHandler):
                 self._send_json({"error": str(e)}, 500)
             return
 
+        if path == "/providers":
+            try:
+                from app.zero_creativity import selectable_providers
+                engine = self._get_engine()
+                self._send_json({
+                    "providers": selectable_providers(),
+                    "active":    getattr(engine, "creativity_provider", engine.provider),
+                })
+            except Exception as e:
+                self._send_json({"error": str(e)}, 500)
+            return
+
         if path == "/monitor":
             try:
                 from app import zero_monitor
@@ -344,7 +356,8 @@ class ZeroHandler(BaseHTTPRequestHandler):
         if not provider_exists(canonical):
             self._send_json({"error": f"Okänd provider: {canonical}"}, 400)
             return
-        engine.provider = canonical
+        engine.provider            = canonical
+        engine.creativity_provider = canonical   # styr faktiskt vilken modell som svarar
         self._send_json({"ok": True, "provider": canonical})
 
     # ── Hjälp ─────────────────────────────────────────────────────────────────
