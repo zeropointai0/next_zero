@@ -1,0 +1,1736 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZeroPointAI — Zero Interface</title>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<style>
+/* ───────── RESET & BASE ───────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:       #fdf8ef;
+  --bg2:      #f5edd8;
+  --accent:   #c89400;
+  --accent-d: #8a6400;
+  --text:     #2a1f00;
+  --text2:    #7a5a10;
+  --glass:    rgba(253,248,239,0.85);
+  --border:   rgba(180,130,0,0.2);
+  --shadow:   0 4px 20px rgba(0,0,0,0.12);
+  --green:    #2a9d5c;
+  --blue:     #2563eb;
+  --orange:   #d97706;
+  --red:      #c05a5a;
+  --gray:     #6b7280;
+}
+html, body {
+  height: 100%;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+}
+
+/* ───────── MAIN GRID ───────── */
+#app {
+  display: grid;
+  grid-template-columns: 300px 1fr 300px;
+  grid-template-rows: 40px 1fr auto;
+  grid-template-areas:
+    "topbar topbar topbar"
+    "left   center right"
+    "bottom bottom bottom";
+  height: 100vh;
+  width: 100vw;
+}
+
+/* ───────── TOP STATUS BAR ───────── */
+#topbar {
+  grid-area: topbar;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  background: var(--glass);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+  z-index: 100;
+  gap: 8px;
+}
+.topbar-left, .topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+.topbar-center {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  justify-content: center;
+}
+.gear-pill {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 20px;
+  letter-spacing: 0.5px;
+  border: 1px solid currentColor;
+  transition: all 0.3s;
+}
+.gear-pill.g1 { color: var(--green);  background: rgba(42,157,92,0.12); }
+.gear-pill.g2 { color: var(--blue);   background: rgba(37,99,235,0.12); }
+.gear-pill.g3 { color: var(--accent); background: rgba(200,148,0,0.12); }
+.provider-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 6px var(--green);
+  transition: background 0.3s;
+}
+#provider-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text2);
+}
+#health-bar-wrap {
+  width: 60px;
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+#health-bar {
+  height: 100%;
+  width: 85%;
+  background: linear-gradient(90deg, var(--green), var(--accent));
+  border-radius: 3px;
+  transition: width 0.5s;
+}
+.topbar-stat {
+  font-size: 11px;
+  color: var(--text2);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.topbar-stat span { color: var(--accent); }
+
+/* ───────── PANEL SHARED ───────── */
+.panel {
+  display: flex;
+  flex-direction: column;
+  background: var(--glass);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+.panel-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.tab-btn {
+  flex: 1;
+  padding: 7px 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  background: none;
+  border: none;
+  color: var(--text2);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+}
+.tab-btn:hover { color: var(--accent); }
+.tab-btn.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  background: rgba(200,148,0,0.06);
+}
+.tab-content {
+  display: none;
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  flex-direction: column;
+  gap: 6px;
+}
+.tab-content.active { display: flex; }
+.tab-content::-webkit-scrollbar { width: 4px; }
+.tab-content::-webkit-scrollbar-track { background: transparent; }
+.tab-content::-webkit-scrollbar-thumb { background: rgba(200,148,0,0.2); border-radius: 2px; }
+
+/* ───────── LEFT PANEL ───────── */
+#left-panel { grid-area: left; }
+
+/* LOG */
+#log-feed { display: flex; flex-direction: column; gap: 3px; width: 100%; }
+.log-entry {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  font-size: 11px;
+  line-height: 1.4;
+  padding: 3px 4px;
+  border-radius: 4px;
+  background: rgba(200,148,0,0.04);
+  border-left: 2px solid transparent;
+  transition: background 0.2s;
+}
+.log-entry:hover { background: rgba(200,148,0,0.09); }
+.log-time { color: var(--text2); font-size: 10px; flex-shrink: 0; margin-top: 1px; }
+.log-badge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  letter-spacing: 0.3px;
+  margin-top: 1px;
+}
+.badge-gear     { background: rgba(37,99,235,0.15);   color: var(--blue); }
+.badge-chat     { background: rgba(200,148,0,0.15);   color: var(--accent-d); }
+.badge-fallback { background: rgba(217,119,6,0.15);   color: var(--orange); }
+.badge-error    { background: rgba(192,90,90,0.15);   color: var(--red); }
+.badge-sys      { background: rgba(107,114,128,0.12); color: var(--gray); }
+.badge-ok       { background: rgba(42,157,92,0.15);   color: var(--green); }
+.log-msg { color: var(--text); font-size: 11px; flex: 1; word-break: break-word; }
+
+/* CMDS */
+#cmd-search {
+  width: 100%;
+  padding: 6px 8px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg2);
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.2s;
+  flex-shrink: 0;
+}
+#cmd-search:focus { border-color: var(--accent); }
+#cmd-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-height: 0;
+}
+.cmd-item {
+  padding: 5px 8px;
+  font-size: 11px;
+  font-family: 'Consolas', monospace;
+  color: var(--text2);
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.15s;
+  word-break: break-all;
+  flex-shrink: 0;
+}
+.cmd-item:hover {
+  background: rgba(200,148,0,0.12);
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+/* MINNEN */
+.mem-big-num {
+  font-size: 42px;
+  font-weight: 700;
+  color: var(--accent);
+  text-align: center;
+  line-height: 1;
+  margin: 8px 0 4px;
+}
+.mem-label {
+  text-align: center;
+  font-size: 11px;
+  color: var(--text2);
+  margin-bottom: 8px;
+}
+.mem-badge {
+  display: block;
+  width: fit-content;
+  margin: 0 auto 10px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 700;
+  background: rgba(42,157,92,0.15);
+  color: var(--green);
+  border: 1px solid rgba(42,157,92,0.3);
+  text-align: center;
+}
+.mem-section { margin-bottom: 8px; }
+.mem-section-title {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text2);
+  margin-bottom: 4px;
+}
+.mem-snippet {
+  font-size: 11px;
+  color: var(--text);
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 5px 7px;
+  line-height: 1.4;
+  font-style: italic;
+  max-height: 52px;
+  overflow: hidden;
+}
+.mem-counts { display: flex; gap: 6px; margin-top: 6px; }
+.mem-count-pill {
+  flex: 1;
+  text-align: center;
+  padding: 4px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font-size: 11px;
+}
+.mem-count-pill .pill-num { font-weight: 700; color: var(--accent); display: block; font-size: 16px; }
+.mem-count-pill .pill-lbl { color: var(--text2); font-size: 10px; }
+
+/* ───────── CENTER COLUMN ───────── */
+#center-col {
+  grid-area: center;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: radial-gradient(ellipse at 50% 60%, rgba(200,148,0,0.06) 0%, transparent 70%);
+}
+#zero-stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#zero-img {
+  max-height: calc(100vh - 200px);
+  max-width: 100%;
+  object-fit: contain;
+  transition: filter 0.4s ease;
+  z-index: 1;
+}
+#zero-placeholder {
+  display: none;
+  width: 260px;
+  height: 420px;
+  border-radius: 16px;
+  background: radial-gradient(ellipse at 50% 30%,
+    rgba(200,148,0,0.7) 0%,
+    rgba(138,100,0,0.4) 40%,
+    rgba(200,148,0,0.1) 100%);
+  border: 2px solid rgba(200,148,0,0.4);
+  align-items: center;
+  justify-content: center;
+  font-size: 120px;
+  font-weight: 900;
+  color: rgba(200,148,0,0.8);
+  z-index: 1;
+  box-shadow: 0 0 60px rgba(200,148,0,0.3);
+  animation: placeholder-pulse 3s ease-in-out infinite;
+}
+@keyframes placeholder-pulse {
+  0%, 100% { box-shadow: 0 0 40px rgba(200,148,0,0.25); }
+  50%       { box-shadow: 0 0 80px rgba(200,148,0,0.5);  }
+}
+
+/* ───────── CHARACTER OVERLAYS ───────── */
+.overlay {
+  position: absolute;
+  z-index: 10;
+  pointer-events: none;
+}
+
+/* 1. Helmet HUD */
+#overlay-helmet {
+  top: 8%;
+  left: 42%;
+  transform: translateX(-50%);
+}
+.helmet-pill {
+  background: var(--glass);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(200,148,0,0.4);
+  border-radius: 20px;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+  white-space: nowrap;
+  box-shadow: 0 2px 12px rgba(200,148,0,0.2);
+  transition: all 0.3s;
+}
+#overlay-helmet.active .helmet-pill {
+  box-shadow: 0 0 18px rgba(200,148,0,0.7), 0 2px 12px rgba(200,148,0,0.3);
+  border-color: var(--accent);
+  animation: helmet-pulse 0.8s ease-in-out infinite;
+}
+@keyframes helmet-pulse {
+  0%, 100% { box-shadow: 0 0 12px rgba(200,148,0,0.5); }
+  50%       { box-shadow: 0 0 28px rgba(200,148,0,0.9); }
+}
+
+/* 2. VRAM Orb (left hand) */
+#overlay-vram {
+  top: 44%;
+  left: 18%;
+  transform: translate(-50%, -50%);
+}
+/* 3. CTX Orb (right hand) */
+#overlay-ctx {
+  top: 44%;
+  left: 72%;
+  transform: translate(-50%, -50%);
+}
+.orb-wrap {
+  width: 72px;
+  height: 72px;
+  filter: drop-shadow(0 0 8px rgba(200,148,0,0.35));
+  transition: filter 0.4s;
+}
+.orb-wrap.active-vram {
+  filter: drop-shadow(0 0 18px rgba(255,140,0,0.85));
+  animation: orb-pulse 0.6s ease-in-out 3;
+}
+.orb-wrap.active-ctx {
+  filter: drop-shadow(0 0 18px rgba(100,80,200,0.85));
+  animation: orb-pulse 0.6s ease-in-out 3;
+}
+@keyframes orb-pulse {
+  0%, 100% { transform: scale(1); }
+  50%       { transform: scale(1.08); }
+}
+
+/* 4. Chest crystal */
+#overlay-chest {
+  top: 34%;
+  left: 44%;
+  transform: translate(-50%, -50%);
+}
+.chest-crystal {
+  width: 48px;
+  height: 52px;
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+  background: #4a90e2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.5s;
+  animation: crystal-pulse 2s ease-in-out infinite;
+}
+@keyframes crystal-pulse {
+  0%, 100% { filter: brightness(1)   drop-shadow(0 0 6px rgba(74,144,226,0.6)); }
+  50%       { filter: brightness(1.3) drop-shadow(0 0 18px rgba(74,144,226,0.9)); }
+}
+.crystal-text {
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  text-align: center;
+  line-height: 1.2;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+}
+
+/* 5. Belt latency badge */
+#overlay-belt {
+  top: 54%;
+  left: 46%;
+  transform: translate(-50%, -50%);
+}
+.belt-badge {
+  background: var(--glass);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(200,148,0,0.25);
+  border-radius: 12px;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text2);
+  white-space: nowrap;
+  transition: all 0.3s;
+}
+.belt-badge.lit {
+  background: rgba(200,148,0,0.2);
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: 0 0 14px rgba(200,148,0,0.5);
+}
+
+/* ───────── RIGHT PANEL ───────── */
+#right-panel { grid-area: right; }
+
+/* HW panel */
+.hw-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 5px 6px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+.hw-row-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.hw-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text2);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.hw-value { font-size: 11px; font-weight: 700; color: var(--text); }
+.hw-bar-track {
+  height: 5px;
+  background: rgba(200,148,0,0.12);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.hw-bar {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.5s, background 0.4s;
+  width: 0%;
+  background: var(--green);
+}
+.hw-bar.warn { background: var(--orange); }
+.hw-bar.crit { background: var(--red); }
+.hw-sub { font-size: 10px; color: var(--text2); }
+#hw-monitor-na {
+  display: none;
+  font-size: 12px;
+  color: var(--text2);
+  text-align: center;
+  padding: 16px;
+  font-style: italic;
+}
+
+/* GEAR panel */
+.gear-section {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex-shrink: 0;
+}
+.gear-section-title {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text2);
+  margin-bottom: 3px;
+}
+.gear-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  gap: 6px;
+}
+.gear-row-label { color: var(--text2); flex-shrink: 0; }
+.gear-row-val { color: var(--text); font-weight: 600; text-align: right; font-size: 11px; word-break: break-all; }
+.avail-yes { color: var(--green); }
+.avail-no  { color: var(--red); }
+
+/* SESSION panel */
+.session-item {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.session-id { font-family: monospace; font-size: 10px; color: var(--text2); word-break: break-all; }
+.session-meta { display: flex; gap: 8px; color: var(--text2); font-size: 10px; }
+.session-meta span { color: var(--text); font-weight: 600; }
+
+/* ───────── BOTTOM AREA ───────── */
+#bottom-area {
+  grid-area: bottom;
+  background: var(--glass);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid var(--border);
+  padding: 10px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 50;
+}
+
+/* Quantum Brainpower Slider */
+#slider-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+#slider-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text2);
+  white-space: nowrap;
+  letter-spacing: 0.4px;
+}
+#brainpower-slider {
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 5px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--accent-d), var(--accent));
+  outline: none;
+  cursor: pointer;
+}
+#brainpower-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--accent-d);
+  box-shadow: 0 0 8px rgba(200,148,0,0.5);
+  cursor: pointer;
+  transition: box-shadow 0.2s;
+}
+#brainpower-slider::-webkit-slider-thumb:hover {
+  box-shadow: 0 0 14px rgba(200,148,0,0.8);
+}
+#brainpower-slider::-moz-range-thumb {
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--accent-d);
+  cursor: pointer;
+}
+.slider-endlabel {
+  font-size: 10px;
+  color: var(--text2);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+#slider-pct {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+  min-width: 80px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+/* Response panel */
+#response-panel {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  padding: 10px 14px;
+  max-height: 40vh;
+  min-height: 48px;
+  overflow-y: auto;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text);
+  transition: border-color 0.3s;
+}
+#response-panel::-webkit-scrollbar { width: 4px; }
+#response-panel::-webkit-scrollbar-thumb { background: rgba(200,148,0,0.25); border-radius: 2px; }
+#response-panel p { margin-bottom: 8px; }
+#response-panel p:last-child { margin-bottom: 0; }
+#response-panel h1, #response-panel h2, #response-panel h3 {
+  color: var(--accent-d); margin: 10px 0 5px; font-size: 14px;
+}
+#response-panel code {
+  background: rgba(200,148,0,0.08);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-family: monospace;
+  font-size: 12px;
+}
+#response-panel pre {
+  background: rgba(42,31,0,0.05);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 8px;
+  overflow-x: auto;
+  margin: 8px 0;
+}
+#response-panel pre code { background: none; border: none; padding: 0; }
+#response-panel ul, #response-panel ol { padding-left: 18px; margin-bottom: 8px; }
+
+/* Loading dots */
+.loading-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text2);
+  font-size: 13px;
+}
+.dot-anim {
+  display: flex;
+  gap: 4px;
+}
+.dot-anim span {
+  display: inline-block;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: dot-bounce 1.2s ease-in-out infinite;
+}
+.dot-anim span:nth-child(2) { animation-delay: 0.2s; }
+.dot-anim span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes dot-bounce {
+  0%, 80%, 100% { transform: translateY(0);   opacity: 0.4; }
+  40%            { transform: translateY(-5px); opacity: 1;   }
+}
+
+/* Input area */
+#input-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+#chat-input {
+  flex: 1;
+  resize: none;
+  min-height: 38px;
+  max-height: 96px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--text);
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  line-height: 1.4;
+  overflow-y: auto;
+}
+#chat-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(200,148,0,0.15);
+}
+#send-btn {
+  padding: 8px 18px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-d));
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s;
+  box-shadow: 0 2px 8px rgba(200,148,0,0.3);
+  height: 38px;
+  flex-shrink: 0;
+}
+#send-btn:hover { box-shadow: 0 4px 16px rgba(200,148,0,0.5); transform: translateY(-1px); }
+#send-btn:active { transform: translateY(0); }
+#send-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+#file-indicator {
+  font-size: 11px;
+  color: var(--accent);
+  display: none;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  background: rgba(200,148,0,0.1);
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+/* Idle glow animation */
+@keyframes hair-idle {
+  0%, 100% { filter: drop-shadow(0 0 8px rgba(200,148,0,0.3)); }
+  50%       { filter: drop-shadow(0 0 14px rgba(200,148,0,0.5)); }
+}
+#zero-img.idle-glow { animation: hair-idle 3s ease-in-out infinite; }
+
+@keyframes hair-active {
+  0%, 100% { filter: drop-shadow(0 0 30px rgba(200,148,0,0.9)); }
+  50%       { filter: drop-shadow(0 0 18px rgba(200,148,0,0.65)); }
+}
+#zero-img.responding-glow {
+  animation: hair-active 0.5s ease-in-out infinite;
+}
+
+/* Misc */
+.empty-state {
+  font-size: 11px;
+  color: var(--text2);
+  text-align: center;
+  padding: 12px;
+  font-style: italic;
+}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ═══ TOP STATUS BAR ═══ -->
+  <div id="topbar">
+    <div class="topbar-left">
+      <span id="gear-pill" class="gear-pill g2">G2</span>
+    </div>
+    <div class="topbar-center">
+      <div class="provider-dot" id="provider-dot"></div>
+      <span id="provider-name">groq</span>
+      <div id="health-bar-wrap"><div id="health-bar"></div></div>
+    </div>
+    <div class="topbar-right">
+      <span class="topbar-stat"><span id="stat-latency">—</span> ms</span>
+      <span class="topbar-stat"><span id="stat-cost">0.000</span> kr</span>
+      <span class="topbar-stat">up <span id="stat-uptime">0s</span></span>
+    </div>
+  </div>
+
+  <!-- ═══ LEFT PANEL ═══ -->
+  <div class="panel" id="left-panel">
+    <div class="panel-tabs">
+      <button class="tab-btn active" data-panel="left" data-tab="log">LOG</button>
+      <button class="tab-btn"        data-panel="left" data-tab="cmds">CMDS</button>
+      <button class="tab-btn"        data-panel="left" data-tab="minnen">MINNEN</button>
+    </div>
+    <!-- LOG tab -->
+    <div class="tab-content active" id="left-tab-log">
+      <div id="log-feed"></div>
+    </div>
+    <!-- CMDS tab -->
+    <div class="tab-content" id="left-tab-cmds">
+      <input type="text" id="cmd-search" placeholder="Sök kommandon..." autocomplete="off">
+      <div id="cmd-list"></div>
+    </div>
+    <!-- MINNEN tab -->
+    <div class="tab-content" id="left-tab-minnen">
+      <div class="mem-big-num" id="mem-total">—</div>
+      <div class="mem-label">minnen totalt</div>
+      <div class="mem-badge" id="mem-db-badge">DB OK</div>
+      <div class="mem-section">
+        <div class="mem-section-title">Senaste user</div>
+        <div class="mem-snippet" id="mem-last-user">—</div>
+      </div>
+      <div class="mem-section">
+        <div class="mem-section-title">Senaste assistant</div>
+        <div class="mem-snippet" id="mem-last-assistant">—</div>
+      </div>
+      <div class="mem-counts">
+        <div class="mem-count-pill">
+          <span class="pill-num" id="mem-user-count">0</span>
+          <span class="pill-lbl">user</span>
+        </div>
+        <div class="mem-count-pill">
+          <span class="pill-num" id="mem-asst-count">0</span>
+          <span class="pill-lbl">assistant</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ CENTER COLUMN ═══ -->
+  <div id="center-col">
+    <div id="zero-stage">
+      <!-- Main character image -->
+      <img id="zero-img"
+           src="/static/zero_avatar.jpg"
+           alt="Zero"
+           class="idle-glow"
+           onerror="this.style.display='none'; document.getElementById('zero-placeholder').style.display='flex';">
+      <!-- Fallback placeholder if image 404s -->
+      <div id="zero-placeholder">Z</div>
+
+      <!-- Overlay 1: Helmet HUD (top-center) -->
+      <div class="overlay" id="overlay-helmet">
+        <div class="helmet-pill" id="helmet-text">G2 · groq</div>
+      </div>
+
+      <!-- Overlay 2: VRAM orb (left hand) -->
+      <div class="overlay" id="overlay-vram">
+        <div class="orb-wrap" id="vram-orb-wrap"></div>
+      </div>
+
+      <!-- Overlay 3: CTX orb (right hand) -->
+      <div class="overlay" id="overlay-ctx">
+        <div class="orb-wrap" id="ctx-orb-wrap"></div>
+      </div>
+
+      <!-- Overlay 4: Chest crystal -->
+      <div class="overlay" id="overlay-chest">
+        <div class="chest-crystal" id="chest-crystal">
+          <span class="crystal-text" id="chest-text">—°C</span>
+        </div>
+      </div>
+
+      <!-- Overlay 5: Belt latency badge -->
+      <div class="overlay" id="overlay-belt">
+        <div class="belt-badge" id="belt-badge">—ms</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ RIGHT PANEL ═══ -->
+  <div class="panel" id="right-panel">
+    <div class="panel-tabs">
+      <button class="tab-btn active" data-panel="right" data-tab="hw">HW</button>
+      <button class="tab-btn"        data-panel="right" data-tab="gear">GEAR</button>
+      <button class="tab-btn"        data-panel="right" data-tab="session">SESSION</button>
+    </div>
+    <!-- HW tab -->
+    <div class="tab-content active" id="right-tab-hw">
+      <div id="hw-monitor-na">Monitor N/A</div>
+      <div class="hw-row" id="hw-cpu-row">
+        <div class="hw-row-header">
+          <span class="hw-label">CPU</span>
+          <span class="hw-value" id="hw-cpu-val">—%</span>
+        </div>
+        <div class="hw-bar-track"><div class="hw-bar" id="hw-cpu-bar"></div></div>
+      </div>
+      <div class="hw-row" id="hw-ram-row">
+        <div class="hw-row-header">
+          <span class="hw-label">RAM</span>
+          <span class="hw-value" id="hw-ram-val">—</span>
+        </div>
+        <div class="hw-bar-track"><div class="hw-bar" id="hw-ram-bar"></div></div>
+        <span class="hw-sub" id="hw-ram-sub">—</span>
+      </div>
+      <div class="hw-row" id="hw-gpu-row">
+        <div class="hw-row-header">
+          <span class="hw-label">GPU</span>
+          <span class="hw-value" id="hw-gpu-val">—%</span>
+        </div>
+        <div class="hw-bar-track"><div class="hw-bar" id="hw-gpu-bar"></div></div>
+        <span class="hw-sub" id="hw-gpu-sub">—</span>
+      </div>
+      <div class="hw-row" id="hw-vram-row">
+        <div class="hw-row-header">
+          <span class="hw-label">VRAM</span>
+          <span class="hw-value" id="hw-vram-val">—%</span>
+        </div>
+        <div class="hw-bar-track"><div class="hw-bar" id="hw-vram-bar"></div></div>
+        <span class="hw-sub" id="hw-vram-sub">—</span>
+      </div>
+      <div class="hw-row" id="hw-disk-row">
+        <div class="hw-row-header">
+          <span class="hw-label">Disk</span>
+          <span class="hw-value" id="hw-disk-val">—%</span>
+        </div>
+        <div class="hw-bar-track"><div class="hw-bar" id="hw-disk-bar"></div></div>
+        <span class="hw-sub" id="hw-disk-sub">—</span>
+      </div>
+      <div class="hw-row">
+        <div class="hw-row-header">
+          <span class="hw-label">Ollama</span>
+          <span class="hw-value" id="hw-ollama-val">—</span>
+        </div>
+      </div>
+    </div>
+    <!-- GEAR tab -->
+    <div class="tab-content" id="right-tab-gear">
+      <div class="gear-section">
+        <div class="gear-section-title">Override</div>
+        <div class="gear-row">
+          <span class="gear-row-label">Mode</span>
+          <span class="gear-row-val" id="gear-override">—</span>
+        </div>
+      </div>
+      <div class="gear-section">
+        <div class="gear-section-title">G1</div>
+        <div class="gear-row"><span class="gear-row-label">Provider</span><span class="gear-row-val" id="g1-provider">—</span></div>
+        <div class="gear-row"><span class="gear-row-label">Model</span><span class="gear-row-val" id="g1-model">—</span></div>
+        <div class="gear-row"><span class="gear-row-label">Available</span><span class="gear-row-val" id="g1-avail">—</span></div>
+        <div class="gear-row"><span class="gear-row-label">Latency EMA</span><span class="gear-row-val" id="g1-latency">—</span></div>
+      </div>
+      <div class="gear-section">
+        <div class="gear-section-title">G2</div>
+        <div class="gear-row"><span class="gear-row-label">Active</span><span class="gear-row-val" id="g2-active">—</span></div>
+        <div class="gear-row"><span class="gear-row-label">Providers</span><span class="gear-row-val" id="g2-providers">—</span></div>
+        <div class="gear-row"><span class="gear-row-label">Model</span><span class="gear-row-val" id="g2-model">—</span></div>
+      </div>
+      <div class="gear-section">
+        <div class="gear-section-title">G3</div>
+        <div class="gear-row"><span class="gear-row-label">Active</span><span class="gear-row-val" id="g3-active">—</span></div>
+        <div class="gear-row"><span class="gear-row-label">Providers</span><span class="gear-row-val" id="g3-providers">—</span></div>
+        <div class="gear-row"><span class="gear-row-label">Model</span><span class="gear-row-val" id="g3-model">—</span></div>
+      </div>
+      <div class="gear-section">
+        <div class="gear-section-title">Token Thresholds</div>
+        <div class="gear-row"><span class="gear-row-label">G1 → G2</span><span class="gear-row-val" id="thresh-g1g2">—</span></div>
+        <div class="gear-row"><span class="gear-row-label">G2 → G3</span><span class="gear-row-val" id="thresh-g2g3">—</span></div>
+      </div>
+    </div>
+    <!-- SESSION tab -->
+    <div class="tab-content" id="right-tab-session">
+      <div id="session-list"><div class="empty-state">Hämtar sessioner...</div></div>
+    </div>
+  </div>
+
+  <!-- ═══ BOTTOM AREA ═══ -->
+  <div id="bottom-area">
+    <!-- Quantum Brainpower Slider -->
+    <div id="slider-row">
+      <span id="slider-label">🧠 QUANTUM BRAINPOWER</span>
+      <span class="slider-endlabel">PRECIST</span>
+      <input type="range" id="brainpower-slider" min="0" max="100" value="50">
+      <span class="slider-endlabel">KREATIVT</span>
+      <span id="slider-pct">50% · temp 0.75</span>
+    </div>
+    <!-- Response panel -->
+    <div id="response-panel">
+      <div class="empty-state">Zero väntar på din fråga...</div>
+    </div>
+    <!-- File indicator (hidden by default) -->
+    <div id="file-indicator">
+      <span>📎</span><span id="file-name"></span>
+    </div>
+    <!-- Input -->
+    <div id="input-row">
+      <textarea id="chat-input" placeholder="Skriv ett meddelande..." rows="1"></textarea>
+      <button id="send-btn">⚡ Skicka</button>
+    </div>
+  </div>
+
+</div><!-- #app -->
+
+<script>
+'use strict';
+
+// ══════════════════════════════════════════════════════════
+//  SESSION & CONSTANTS
+// ══════════════════════════════════════════════════════════
+const BASE = '';
+
+let SESSION_ID = sessionStorage.getItem('zero_session_id');
+if (!SESSION_ID) {
+  SESSION_ID = (typeof crypto !== 'undefined' && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : 'sess-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
+  sessionStorage.setItem('zero_session_id', SESSION_ID);
+}
+
+const APP_START = Date.now();
+
+// ══════════════════════════════════════════════════════════
+//  API HELPER
+// ══════════════════════════════════════════════════════════
+async function api(path, opts = {}) {
+  try {
+    const res = await fetch(BASE + path, opts);
+    if (res.status === 404) return { _404: true };
+    if (!res.ok) return { _error: 'HTTP ' + res.status };
+    const ct = res.headers.get('content-type') || '';
+    if (ct.includes('application/json')) return await res.json();
+    return await res.text();
+  } catch (e) {
+    return { _error: e.message };
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+//  UTILITIES
+// ══════════════════════════════════════════════════════════
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function calcTemp(pct) {
+  return parseFloat((0.1 + (Number(pct) / 100) * 1.3).toFixed(2));
+}
+
+function hhmm() {
+  return new Date().toTimeString().slice(0, 8);
+}
+
+// ══════════════════════════════════════════════════════════
+//  LOG SYSTEM
+// ══════════════════════════════════════════════════════════
+const MAX_LOG = 150;
+let logEntries = [];
+
+const BADGE_MAP = {
+  GEAR: 'badge-gear',
+  CHAT: 'badge-chat',
+  FALLBACK: 'badge-fallback',
+  ERROR: 'badge-error',
+  SYS: 'badge-sys',
+  OK: 'badge-ok'
+};
+
+function addLog(type, message) {
+  logEntries.unshift({ ts: hhmm(), type: String(type).toUpperCase(), message });
+  if (logEntries.length > MAX_LOG) logEntries.length = MAX_LOG;
+  renderLog();
+}
+
+function renderLog() {
+  const feed = document.getElementById('log-feed');
+  feed.innerHTML = logEntries.map(e => {
+    const cls = BADGE_MAP[e.type] || 'badge-sys';
+    return `<div class="log-entry">
+      <span class="log-time">${e.ts}</span>
+      <span class="log-badge ${cls}">${e.type}</span>
+      <span class="log-msg">${escapeHtml(e.message)}</span>
+    </div>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════════════════════
+//  TAB SYSTEM
+// ══════════════════════════════════════════════════════════
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const panel  = btn.dataset.panel;
+    const tab    = btn.dataset.tab;
+    const prefix = panel === 'left' ? 'left-tab-' : 'right-tab-';
+
+    document.querySelectorAll(`[data-panel="${panel}"]`).forEach(b => b.classList.remove('active'));
+    document.querySelectorAll(`[id^="${prefix}"]`).forEach(c => c.classList.remove('active'));
+
+    btn.classList.add('active');
+    const el = document.getElementById(prefix + tab);
+    if (el) el.classList.add('active');
+  });
+});
+
+// ══════════════════════════════════════════════════════════
+//  ORB SVG FACTORY
+// ══════════════════════════════════════════════════════════
+function makeOrb(pct, color1, color2, label1, label2) {
+  const p = Math.max(0, Math.min(100, Number(pct) || 0));
+  // Fill rect top position: 72 = empty, 4 = full
+  const fillTop = 4 + (68 * (1 - p / 100));
+  const uid = Math.random().toString(36).slice(2, 8);
+  return `<svg width="72" height="72" viewBox="0 0 72 72" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="fill${uid}" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="${color1}" stop-opacity="0.85"/>
+      <stop offset="100%" stop-color="${color2}" stop-opacity="0.65"/>
+    </linearGradient>
+    <radialGradient id="glow${uid}" cx="50%" cy="40%" r="50%">
+      <stop offset="0%" stop-color="${color1}" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="${color1}" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="clip${uid}"><circle cx="36" cy="36" r="31"/></clipPath>
+  </defs>
+  <circle cx="36" cy="36" r="34" fill="rgba(253,248,239,0.75)" stroke="rgba(200,148,0,0.3)" stroke-width="1.5"/>
+  <circle cx="36" cy="36" r="31" fill="rgba(253,248,239,0.4)"/>
+  <circle cx="36" cy="36" r="31" fill="url(#glow${uid})"/>
+  <rect x="5" y="${fillTop.toFixed(1)}" width="62" height="${(72 - fillTop + 2).toFixed(1)}"
+        fill="url(#fill${uid})" clip-path="url(#clip${uid})" opacity="0.8"/>
+  <ellipse cx="36" cy="${fillTop.toFixed(1)}" rx="26" ry="4"
+           fill="${color1}" opacity="0.2"/>
+  <circle cx="36" cy="36" r="31" fill="none" stroke="rgba(200,148,0,0.18)" stroke-width="1"/>
+  <text x="36" y="31" text-anchor="middle" dominant-baseline="middle"
+        font-family="'Segoe UI',sans-serif" font-size="10" font-weight="700"
+        fill="rgba(42,31,0,0.65)">${escapeHtml(label1)}</text>
+  <text x="36" y="43" text-anchor="middle" dominant-baseline="middle"
+        font-family="'Segoe UI',sans-serif" font-size="12" font-weight="800"
+        fill="rgba(42,31,0,0.85)">${escapeHtml(label2)}</text>
+  </svg>`;
+}
+
+// ══════════════════════════════════════════════════════════
+//  HAIR GLOW
+// ══════════════════════════════════════════════════════════
+const zeroImg = document.getElementById('zero-img');
+let hairDecayTimer = null;
+
+function triggerHairActive() {
+  zeroImg.classList.remove('idle-glow');
+  zeroImg.classList.add('responding-glow');
+  clearTimeout(hairDecayTimer);
+  hairDecayTimer = setTimeout(() => {
+    zeroImg.classList.remove('responding-glow');
+    zeroImg.classList.add('idle-glow');
+  }, 3000);
+}
+
+// Start idle
+zeroImg.classList.add('idle-glow');
+
+// ══════════════════════════════════════════════════════════
+//  HW BAR HELPER
+// ══════════════════════════════════════════════════════════
+function setBar(barId, valId, pct, displayVal) {
+  const bar = document.getElementById(barId);
+  const val = document.getElementById(valId);
+  if (!bar || !val) return;
+  const p = Math.max(0, Math.min(100, Number(pct) || 0));
+  bar.style.width = p + '%';
+  bar.className = 'hw-bar' + (p > 85 ? ' crit' : p > 70 ? ' warn' : '');
+  if (displayVal !== undefined) val.textContent = displayVal;
+}
+
+// ══════════════════════════════════════════════════════════
+//  OVERLAYS
+// ══════════════════════════════════════════════════════════
+
+// -- Helmet active state --
+function setHelmetActive(on) {
+  document.getElementById('overlay-helmet').classList.toggle('active', on);
+}
+
+// -- Chest crystal --
+function updateChestCrystal(temp) {
+  const t = Number(temp) || 0;
+  const crystal = document.getElementById('chest-crystal');
+  document.getElementById('chest-text').textContent = Math.round(t) + '°C';
+  let color;
+  if (t < 60)      color = '#4a90e2';
+  else if (t < 75) color = '#c89400';
+  else             color = '#c05a5a';
+  crystal.style.background = color;
+}
+
+// -- Belt badge --
+let beltTimer = null;
+function lightBelt(ms) {
+  const belt = document.getElementById('belt-badge');
+  belt.textContent = Math.round(ms) + 'ms';
+  belt.classList.add('lit');
+  clearTimeout(beltTimer);
+  beltTimer = setTimeout(() => belt.classList.remove('lit'), 2000);
+}
+
+// -- Orbs --
+let lastVramPct = 0;
+let lastCtxPct  = 0;
+
+function updateVramOrb(pct) {
+  lastVramPct = pct;
+  document.getElementById('vram-orb-wrap').innerHTML =
+    makeOrb(pct, '#ff8c00', '#b34500', 'VRAM', Math.round(pct) + '%');
+}
+
+function updateCtxOrb(pct) {
+  lastCtxPct = pct;
+  document.getElementById('ctx-orb-wrap').innerHTML =
+    makeOrb(pct, '#5b60e0', '#8b30c0', 'CTX', Math.round(pct) + '%');
+}
+
+function pulseOrbs() {
+  const vw = document.getElementById('vram-orb-wrap');
+  const cw = document.getElementById('ctx-orb-wrap');
+  vw.classList.add('active-vram');
+  cw.classList.add('active-ctx');
+  setTimeout(() => {
+    vw.classList.remove('active-vram');
+    cw.classList.remove('active-ctx');
+  }, 1800);
+}
+
+// Init orbs at 0
+updateVramOrb(0);
+updateCtxOrb(0);
+updateChestCrystal(50);
+
+// ══════════════════════════════════════════════════════════
+//  UPTIME COUNTER
+// ══════════════════════════════════════════════════════════
+function updateUptime() {
+  const s = Math.floor((Date.now() - APP_START) / 1000);
+  let str;
+  if (s < 60)        str = s + 's';
+  else if (s < 3600) str = Math.floor(s / 60) + 'm ' + (s % 60) + 's';
+  else               str = Math.floor(s / 3600) + 'h ' + Math.floor((s % 3600) / 60) + 'm';
+  document.getElementById('stat-uptime').textContent = str;
+}
+
+// ══════════════════════════════════════════════════════════
+//  SLIDER
+// ══════════════════════════════════════════════════════════
+const slider    = document.getElementById('brainpower-slider');
+const sliderPct = document.getElementById('slider-pct');
+
+function updateSliderDisplay() {
+  const pct  = parseInt(slider.value);
+  const temp = calcTemp(pct);
+  sliderPct.textContent = pct + '% · temp ' + temp;
+}
+
+slider.addEventListener('input', updateSliderDisplay);
+updateSliderDisplay();
+
+// ══════════════════════════════════════════════════════════
+//  STATUS POLL  —  /status  (every 3s)
+// ══════════════════════════════════════════════════════════
+async function pollStatus() {
+  const data = await api('/status');
+  if (!data || data._404 || data._error) return;
+
+  // Gear pill
+  const gRaw   = data.gear || data.current_gear || data.active_gear || 'G2';
+  const gearStr = String(gRaw).toUpperCase().startsWith('G')
+    ? String(gRaw).toUpperCase()
+    : 'G' + gRaw;
+  const gearPill = document.getElementById('gear-pill');
+  gearPill.textContent = gearStr;
+  gearPill.className   = 'gear-pill ' + gearStr.toLowerCase();
+
+  // Provider
+  const prov = data.provider || data.active_provider || '—';
+  document.getElementById('provider-name').textContent = prov;
+  document.getElementById('provider-dot').style.background =
+    data.healthy === false ? 'var(--red)' : 'var(--green)';
+
+  // Health bar
+  const health = Number(data.health_score || data.health || 85);
+  document.getElementById('health-bar').style.width = Math.min(100, health) + '%';
+
+  // Latency
+  const lat = data.latency_ms || data.latency || data.last_latency;
+  if (lat != null) {
+    document.getElementById('stat-latency').textContent = Math.round(lat);
+    document.getElementById('belt-badge').textContent   = Math.round(lat) + 'ms';
+  }
+
+  // Cost (cumulative — just display whatever backend says)
+  const cost = data.session_cost || data.cost || 0;
+  document.getElementById('stat-cost').textContent = Number(cost).toFixed(3);
+
+  // Helmet
+  document.getElementById('helmet-text').textContent = `${gearStr} · ${prov}`;
+
+  // Memories
+  if (data.memory_count != null || data.memories != null || data.total_memories != null) {
+    updateMemPanel(data);
+  }
+
+  // CTX pct from status
+  const ctxPct = data.ctx_pct || data.context_pct || data.ctx_usage_pct;
+  if (ctxPct != null) updateCtxOrb(ctxPct);
+}
+
+// ══════════════════════════════════════════════════════════
+//  MONITOR POLL  —  /monitor  (every 3s)
+// ══════════════════════════════════════════════════════════
+let monitorFailed = false;
+
+async function pollMonitor() {
+  if (monitorFailed) return;
+  const data = await api('/monitor');
+
+  if (!data || data._404) {
+    monitorFailed = true;
+    document.getElementById('hw-monitor-na').style.display = 'block';
+    ['hw-cpu-row','hw-ram-row','hw-gpu-row','hw-vram-row','hw-disk-row'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.style.display = 'none';
+    });
+    addLog('SYS', 'Monitor N/A — /monitor ej tillgänglig');
+    return;
+  }
+  if (data._error) return;
+
+  // CPU
+  const cpuRaw = data.cpu || data.cpu_percent || {};
+  const cpuPct = typeof cpuRaw === 'number' ? cpuRaw : (cpuRaw.percent || cpuRaw.usage || 0);
+  setBar('hw-cpu-bar', 'hw-cpu-val', cpuPct, cpuPct.toFixed(1) + '%');
+
+  // RAM
+  const ram     = data.ram || data.memory || {};
+  const ramPct  = Number(ram.percent || ram.usage_pct || 0);
+  const ramUsed = Number(ram.used_gb  != null ? ram.used_gb  : (ram.used  || 0) / 1073741824);
+  const ramTot  = Number(ram.total_gb != null ? ram.total_gb : (ram.total || 0) / 1073741824);
+  setBar('hw-ram-bar', 'hw-ram-val', ramPct, ramPct.toFixed(1) + '%');
+  document.getElementById('hw-ram-sub').textContent =
+    ramUsed.toFixed(1) + ' / ' + ramTot.toFixed(1) + ' GB';
+
+  // GPU
+  const gpu     = data.gpu || {};
+  const gpuName = gpu.name || data.gpu_name || '—';
+  const gpuUtil = Number(gpu.utilization || gpu.util_pct || data.gpu_utilization || 0);
+  const gpuTemp = gpu.temperature != null ? gpu.temperature : (gpu.temp != null ? gpu.temp : data.gpu_temp);
+  setBar('hw-gpu-bar', 'hw-gpu-val', gpuUtil, gpuUtil + '%');
+  document.getElementById('hw-gpu-sub').textContent =
+    gpuTemp != null ? gpuName + ' · ' + gpuTemp + '°C' : gpuName;
+
+  // VRAM
+  const vram     = data.vram || gpu.vram || {};
+  const vramPct  = Number(vram.percent  || vram.usage_pct || 0);
+  const vramUsed = Number(vram.used_mb  != null ? vram.used_mb  : Math.round((vram.used  || 0) / 1048576));
+  const vramTot  = Number(vram.total_mb != null ? vram.total_mb : Math.round((vram.total || 0) / 1048576));
+  setBar('hw-vram-bar', 'hw-vram-val', vramPct, vramPct.toFixed(1) + '%');
+  document.getElementById('hw-vram-sub').textContent = vramUsed + ' / ' + vramTot + ' MB';
+  updateVramOrb(vramPct);
+
+  // Disk
+  const disk     = data.disk || {};
+  const diskFree = Number(disk.free_gb  != null ? disk.free_gb  : (disk.free  || 0) / 1073741824);
+  const diskTot  = Number(disk.total_gb != null ? disk.total_gb : (disk.total || 1) / 1073741824);
+  const diskUsed = diskTot > 0 ? ((diskTot - diskFree) / diskTot * 100) : 0;
+  setBar('hw-disk-bar', 'hw-disk-val', diskUsed, diskUsed.toFixed(1) + '%');
+  document.getElementById('hw-disk-sub').textContent =
+    diskFree.toFixed(1) + ' fri / ' + diskTot.toFixed(1) + ' GB';
+
+  // Ollama
+  const ollamaObj = data.ollama || {};
+  document.getElementById('hw-ollama-val').textContent =
+    ollamaObj.loaded_model || ollamaObj.model || data.ollama_model || '—';
+
+  // GPU temp → chest crystal
+  if (gpuTemp != null) updateChestCrystal(gpuTemp);
+}
+
+// ══════════════════════════════════════════════════════════
+//  GEAR STATUS POLL  —  /gear/status  (every 5s)
+// ══════════════════════════════════════════════════════════
+async function pollGearStatus() {
+  const data = await api('/gear/status');
+  if (!data || data._404 || data._error) return;
+
+  document.getElementById('gear-override').textContent = data.override || data.override_mode || 'auto';
+
+  const g1 = data.g1 || {};
+  if (g1.provider || g1.model) {
+    document.getElementById('g1-provider').textContent = g1.provider || '—';
+    document.getElementById('g1-model').textContent    = g1.model    || '—';
+    const avail   = g1.available;
+    const availEl = document.getElementById('g1-avail');
+    availEl.textContent = avail === true ? '✓' : avail === false ? '✗' : '—';
+    availEl.className   = 'gear-row-val ' + (avail === true ? 'avail-yes' : avail === false ? 'avail-no' : '');
+    document.getElementById('g1-latency').textContent = g1.latency_ema ? g1.latency_ema + 'ms' : '—';
+  }
+
+  const g2 = data.g2 || {};
+  if (g2.active_provider || g2.provider || g2.model) {
+    document.getElementById('g2-active').textContent    = g2.active_provider || g2.provider || '—';
+    document.getElementById('g2-providers').textContent = Array.isArray(g2.providers) ? g2.providers.join(', ') : (g2.providers || '—');
+    document.getElementById('g2-model').textContent     = g2.model || g2.active_model || '—';
+  }
+
+  const g3 = data.g3 || {};
+  if (g3.active_provider || g3.provider || g3.model) {
+    document.getElementById('g3-active').textContent    = g3.active_provider || g3.provider || '—';
+    document.getElementById('g3-providers').textContent = Array.isArray(g3.providers) ? g3.providers.join(', ') : (g3.providers || '—');
+    document.getElementById('g3-model').textContent     = g3.model || g3.active_model || '—';
+  }
+
+  const thresh = data.thresholds || data.token_thresholds || {};
+  document.getElementById('thresh-g1g2').textContent = thresh.g1_to_g2 || thresh.g1g2 || '—';
+  document.getElementById('thresh-g2g3').textContent = thresh.g2_to_g3 || thresh.g2g3 || '—';
+
+  // Update helmet HUD
+  const curGear = data.current_gear || data.active_gear || 'G2';
+  const gStr    = String(curGear).toUpperCase().startsWith('G') ? String(curGear).toUpperCase() : 'G' + curGear;
+  const curProv = (data.g2 && data.g2.active_provider) || data.active_provider || 'groq';
+  document.getElementById('helmet-text').textContent = `${gStr} · ${curProv}`;
+
+  addLog('GEAR', 'Status: ' + gStr + ' via ' + curProv);
+}
+
+// ══════════════════════════════════════════════════════════
+//  MEMORY PANEL
+// ══════════════════════════════════════════════════════════
+function updateMemPanel(data) {
+  const total = Number(data.memory_count || data.memories || data.total_memories || 0);
+  document.getElementById('mem-total').textContent = total;
+
+  const ok    = data.db_status !== 'error' && data.db_ok !== false;
+  const badge = document.getElementById('mem-db-badge');
+  badge.textContent        = ok ? 'DB OK' : 'DB ERR';
+  badge.style.background   = ok ? 'rgba(42,157,92,0.15)'  : 'rgba(192,90,90,0.15)';
+  badge.style.color        = ok ? 'var(--green)' : 'var(--red)';
+  badge.style.borderColor  = ok ? 'rgba(42,157,92,0.3)'   : 'rgba(192,90,90,0.3)';
+
+  const lu = data.last_user_message      || data.last_user      || '';
+  const la = data.last_assistant_message || data.last_assistant || '';
+  if (lu) document.getElementById('mem-last-user').textContent      = lu.slice(0, 120);
+  if (la) document.getElementById('mem-last-assistant').textContent = la.slice(0, 120);
+
+  document.getElementById('mem-user-count').textContent = data.user_count      || data.user_messages      || 0;
+  document.getElementById('mem-asst-count').textContent = data.assistant_count || data.assistant_messages || 0;
+}
+
+// ══════════════════════════════════════════════════════════
+//  ROUTER COMMANDS  —  /router/commands  (once on load)
+// ══════════════════════════════════════════════════════════
+const FALLBACK_CMDS = [
+  '/status', '/gear', '/gear/status', '/monitor', '/sessions',
+  '/memory', '/router/commands', '/chat', '/reset', '/help',
+  '/history', '/clear', '/version', '/metrics', '/health'
+];
+let allCommands = [];
+
+async function loadCommands() {
+  const data   = await api('/router/commands');
+  const cmdList = document.getElementById('cmd-list');
+  let cmds;
+
+  if (!data || data._404 || data._error) {
+    cmds = FALLBACK_CMDS;
+    const notice = document.createElement('div');
+    notice.className   = 'empty-state';
+    notice.textContent = 'Endpoint saknas — visar fallback-kommandon';
+    cmdList.prepend(notice);
+  } else {
+    cmds = Array.isArray(data)
+      ? data
+      : (data.commands || data.routes || data.paths || []);
+    if (!Array.isArray(cmds) || cmds.length === 0) cmds = FALLBACK_CMDS;
+  }
+
+  allCommands = cmds.map(c =>
+    typeof c === 'string' ? c : (c.path || c.command || c.name || String(c))
+  );
+  renderCommands(allCommands);
+}
+
+function renderCommands(cmds) {
+  const cmdList = document.getElementById('cmd-list');
+  // Preserve "endpoint saknas" notice if present
+  const notice = cmdList.querySelector('.empty-state');
+  cmdList.innerHTML = '';
+  if (notice) cmdList.appendChild(notice);
+
+  cmds.forEach(cmd => {
+    const el = document.createElement('div');
+    el.className   = 'cmd-item';
+    el.textContent = cmd;
+    el.addEventListener('click', () => {
+      document.getElementById('chat-input').value = cmd;
+      document.getElementById('chat-input').focus();
+    });
+    cmdList.appendChild(el);
+  });
+}
+
+document.getElementById('cmd-search').addEventListener('input', e => {
+  const q        = e.target.value.toLowerCase();
+  const filtered = allCommands.filter(c => c.toLowerCase().includes(q));
+  renderCommands(filtered);
+});
+
+// ══════════════════════════════════════════════════════════
+//  SESSION LIST  —  /sessions  (on load + every 30s)
+// ══════════════════════════════════════════════════════════
+async function loadSessions() {
+  let data = await api('/sessions');
+  if (!data || data._404 || data._error) data = await api('/status');
+
+  const list = document.getElementById('session-list');
+  let sessions = null;
+
+  if (data && !data._404 && !data._error) {
+    sessions = Array.isArray(data)
+      ? data
+      : (data.sessions || data.recent_sessions || null);
+  }
+
+  if (!sessions || sessions.length === 0) {
+    list.innerHTML = '<div class="empty-state">Inga sessioner hittades</div>';
+    return;
+  }
+
+  list.innerHTML = sessions.slice(0, 20).map(s => {
+    const sid     = s.session_id || s.id || '—';
+    const msgs    = s.message_count || s.messages || '—';
+    const cost    = s.cost != null ? Number(s.cost).toFixed(4) + ' kr' : '—';
+    const dateRaw = s.created_at || s.date || s.timestamp || '';
+    const dateStr = dateRaw ? new Date(dateRaw).toLocaleDateString('sv-SE') : '—';
+    return `<div class="session-item">
+      <span class="session-id">${escapeHtml(String(sid).slice(0, 36))}</span>
+      <div class="session-meta">
+        <span><span>${escapeHtml(String(msgs))}</span> msg</span>
+        <span><span>${escapeHtml(cost)}</span></span>
+        <span><span>${escapeHtml(dateStr)}</span></span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════════════════════
+//  CHAT
+// ══════════════════════════════════════════════════════════
+const chatInput     = document.getElementById('chat-input');
+const sendBtn       = document.getElementById('send-btn');
+const responsePanel = document.getElementById('response-panel');
+
+// Auto-resize textarea
+chatInput.addEventListener('input', () => {
+  chatInput.style.height = 'auto';
+  chatInput.style.height = Math.min(chatInput.scrollHeight, 96) + 'px';
+});
+
+// Enter to send, Shift+Enter for newline
+chatInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+});
+
+sendBtn.addEventListener('click', sendMessage);
+
+function showLoading() {
+  responsePanel.innerHTML = `<div class="loading-wrap">
+    ZERO svarar&nbsp;
+    <div class="dot-anim"><span></span><span></span><span></span></div>
+  </div>`;
+}
+
+function showResponse(html) {
+  responsePanel.innerHTML = html;
+  responsePanel.scrollTop = 0;
+}
+
+function showError(msg) {
+  responsePanel.innerHTML = `<div style="color:var(--red);font-size:13px;">⚠ ${escapeHtml(msg)}</div>`;
+}
+
+let sessionCost = 0;
+
+async function sendMessage() {
+  const msg = chatInput.value.trim();
+  if (!msg) return;
+
+  const pct         = parseInt(slider.value);
+  const temperature = calcTemp(pct);
+
+  sendBtn.disabled   = true;
+  chatInput.disabled = true;
+
+  // Log outgoing
+  const preview = msg.length > 60 ? msg.slice(0, 60) + '…' : msg;
+  addLog('CHAT', '→ ' + preview);
+
+  // Show loading state
+  showLoading();
+  setHelmetActive(true);
+  triggerHairActive();
+
+  const t0 = Date.now();
+
+  try {
+    const res = await api('/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: msg, temperature, session_id: SESSION_ID })
+    });
+
+    const elapsed = Date.now() - t0;
+
+    if (!res || res._404) {
+      showError('Chat endpoint saknas (404)');
+      addLog('ERROR', 'POST /chat → 404');
+    } else if (res._error) {
+      showError('Nätverksfel: ' + res._error);
+      addLog('ERROR', 'Nätverksfel: ' + res._error);
+    } else {
+      // Extract response text
+      const text = res.response || res.message || res.content || res.text ||
+                   (typeof res === 'string' ? res : JSON.stringify(res));
+
+      // Render Markdown
+      let rendered;
+      try {
+        rendered = (typeof marked !== 'undefined' && marked.parse)
+          ? marked.parse(text)
+          : '<p>' + escapeHtml(text) + '</p>';
+      } catch (_) {
+        rendered = '<p>' + escapeHtml(text) + '</p>';
+      }
+      showResponse(rendered);
+
+      // Parse metadata
+      const gRaw    = res.gear || res.current_gear || 'G2';
+      const gearStr = String(gRaw).toUpperCase().startsWith('G')
+        ? String(gRaw).toUpperCase()
+        : 'G' + gRaw;
+      const prov    = res.provider || res.active_provider || '—';
+      const latency = Number(res.latency_ms || res.latency || elapsed);
+      const tokens  = res.tokens || res.token_count || (res.usage && res.usage.total_tokens) || '—';
+      const msgCost = Number(res.cost || res.message_cost || 0);
+
+      // Update status bar
+      document.getElementById('stat-latency').textContent = Math.round(latency);
+      sessionCost += msgCost;
+      document.getElementById('stat-cost').textContent = sessionCost.toFixed(3);
+
+      // Update gear pill
+      const gearPill = document.getElementById('gear-pill');
+      gearPill.textContent = gearStr;
+      gearPill.className   = 'gear-pill ' + gearStr.toLowerCase();
+
+      // Update helmet
+      document.getElementById('helmet-text').textContent = `${gearStr} · ${prov}`;
+
+      // Animations
+      lightBelt(latency);
+      pulseOrbs();
+
+      // Log
+      addLog('OK', `← [${gearStr}·${prov}] ${Math.round(latency)}ms ${tokens}tok ${msgCost.toFixed(4)}kr`);
+    }
+  } catch (err) {
+    showError('Undantag: ' + err.message);
+    addLog('ERROR', err.message);
+  }
+
+  setHelmetActive(false);
+  sendBtn.disabled   = false;
+  chatInput.disabled = false;
+  chatInput.value    = '';
+  chatInput.style.height = 'auto';
+  chatInput.focus();
+}
+
+// ══════════════════════════════════════════════════════════
+//  INIT & POLLING
+// ══════════════════════════════════════════════════════════
+async function init() {
+  addLog('SYS', 'ZeroPointAI UI v23 — session ' + SESSION_ID.slice(0, 8) + '…');
+  addLog('SYS', 'Ansluter till servern...');
+
+  // Initial data fetches
+  await pollStatus();
+  await pollMonitor();
+  await loadCommands();
+  await loadSessions();
+
+  addLog('SYS', 'Initialisering klar');
+
+  // Recurring intervals
+  setInterval(pollStatus,      3000);
+  setInterval(pollMonitor,     3000);
+  setInterval(pollGearStatus,  5000);
+  setInterval(updateUptime,    1000);
+  setInterval(loadSessions,   30000);
+}
+
+init();
+</script>
+</body>
+</html>
