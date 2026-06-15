@@ -46,8 +46,18 @@ html, body { height: 100%; font-family: 'Segoe UI', system-ui, -apple-system, sa
 .gear-pill.g1 { color: var(--green);  background: rgba(42,157,92,0.12); }
 .gear-pill.g2 { color: var(--blue);   background: rgba(37,99,235,0.12); }
 .gear-pill.g3 { color: var(--accent); background: rgba(200,148,0,0.12); }
+.gear-pill.creativity { color: var(--accent); background: rgba(200,148,0,0.15); border-color: var(--accent); }
 .provider-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 6px var(--green); transition: background 0.3s; }
 #provider-name { font-size: 12px; font-weight: 600; color: var(--text2); }
+.provider-buttons { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+.prov-btn { font-size: 10px; font-weight: 600; padding: 3px 9px; border-radius: 14px; border: 1px solid var(--border); background: var(--bg2); color: var(--text2); cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+.prov-btn:hover { color: var(--text); border-color: var(--accent); }
+.prov-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+#length-group { display: flex; align-items: center; gap: 4px; margin-left: 16px; }
+.length-lbl { font-size: 9px; font-weight: 700; letter-spacing: 0.5px; color: var(--text2); opacity: 0.6; margin-right: 2px; }
+.len-btn { font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 12px; border: 1px solid var(--border); background: var(--bg2); color: var(--text2); cursor: pointer; transition: all 0.2s; }
+.len-btn:hover { color: var(--text); border-color: var(--accent); }
+.len-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 #health-bar-wrap { width: 60px; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
 #health-bar { height: 100%; width: 85%; background: linear-gradient(90deg, var(--green), var(--accent)); border-radius: 3px; transition: width 0.5s; }
 .topbar-stat { font-size: 11px; color: var(--text2); font-weight: 600; white-space: nowrap; }
@@ -258,7 +268,11 @@ html, body { height: 100%; font-family: 'Segoe UI', system-ui, -apple-system, sa
 #slider-pct { font-size: 10px; font-weight: 700; color: var(--accent); min-width: 60px; text-align: right; flex-shrink: 0; }
 
 /* Response panel */
-#response-panel { background: var(--bg2); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 6px; padding: 10px 14px; max-height: 32vh; min-height: 44px; overflow-y: auto; font-size: 13px; line-height: 1.6; color: var(--text); transition: border-color 0.3s; }
+#response-panel { background: var(--bg2); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 6px; padding: 10px 14px; min-height: 44px; max-height: 32vh; overflow-y: auto; font-size: 13px; line-height: 1.6; color: var(--text); transition: border-color 0.3s; display: flex; flex-direction: column; gap: 10px; }
+.chat-bubble { padding: 8px 12px; border-radius: 10px; max-width: 92%; word-wrap: break-word; }
+.chat-bubble.user { align-self: flex-end; background: rgba(200,148,0,0.12); border: 1px solid rgba(200,148,0,0.25); color: var(--text); }
+.chat-bubble.zero { align-self: flex-start; background: var(--bg); border: 1px solid var(--border); }
+.chat-bubble .bubble-role { font-size: 9px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; opacity: 0.5; margin-bottom: 3px; }
 #response-panel::-webkit-scrollbar { width: 4px; }
 #response-panel::-webkit-scrollbar-thumb { background: rgba(200,148,0,0.25); border-radius: 2px; }
 #response-panel p { margin-bottom: 8px; }
@@ -330,11 +344,12 @@ html, body { height: 100%; font-family: 'Segoe UI', system-ui, -apple-system, sa
 <!-- TOPBAR -->
 <div id="topbar">
   <div class="topbar-left">
-    <span id="gear-pill" class="gear-pill g2">G2</span>
+    <span id="gear-pill" class="gear-pill creativity" title="Creativity — manuellt provider-val">◆</span>
   </div>
   <div class="topbar-center">
     <div class="provider-dot" id="provider-dot"></div>
     <span id="provider-name">groq</span>
+    <div id="provider-buttons" class="provider-buttons"></div>
     <div id="health-bar-wrap"><div id="health-bar"></div></div>
   </div>
   <div class="topbar-right">
@@ -393,7 +408,7 @@ html, body { height: 100%; font-family: 'Segoe UI', system-ui, -apple-system, sa
       <div id="aura-tips"></div>
     </div>
 
-    <div class="overlay" id="overlay-helmet"><div class="helmet-pill" id="helmet-text">G2 · groq</div></div>
+    <div class="overlay" id="overlay-helmet"><div class="helmet-pill" id="helmet-text">—</div></div>
     <div class="overlay" id="overlay-vram"><div class="orb-wrap" id="vram-orb-wrap"></div></div>
     <div class="overlay" id="overlay-ctx"><div class="orb-wrap" id="ctx-orb-wrap"></div></div>
     <div class="overlay" id="overlay-chest"><div class="chest-crystal" id="chest-crystal"><span class="crystal-text" id="chest-text">—°C</span></div></div>
@@ -458,6 +473,12 @@ html, body { height: 100%; font-family: 'Segoe UI', system-ui, -apple-system, sa
       <input type="range" id="brainpower-slider" min="0" max="100" value="50">
       <span class="slider-endlabel">KREATIVT</span>
       <span id="slider-pct">50% · 0.75</span>
+    </div>
+    <div id="length-group">
+      <span class="length-lbl">LÄNGD</span>
+      <button class="len-btn" data-len="kort">Kort</button>
+      <button class="len-btn active" data-len="normal">Normal</button>
+      <button class="len-btn" data-len="lang">Lång</button>
     </div>
   </div>
   <div id="response-panel"><div class="empty-state">Zero väntar på din fråga...</div></div>
@@ -717,9 +738,9 @@ async function uploadFiles(files) {
 // ── STATUS POLL ──
 async function pollStatus() {
   const d=await api('/status'); if(!d||d._404||d._error) return;
-  const gRaw=d.gear||d.current_gear||d.active_gear||'G2';
-  const gs=String(gRaw).toUpperCase().startsWith('G')?String(gRaw).toUpperCase():'G'+gRaw;
-  const gp=document.getElementById('gear-pill'); gp.textContent=gs; gp.className='gear-pill '+gs.toLowerCase();
+  const gp=document.getElementById('gear-pill');
+  if(d.mode==='creativity'){ gp.textContent='◆'; gp.className='gear-pill creativity'; gp.title='Creativity — manuellt provider-val'; }
+  else { const gRaw=d.gear||d.current_gear||d.active_gear||'—'; const gs=String(gRaw).toUpperCase().startsWith('G')?String(gRaw).toUpperCase():'G'+gRaw; gp.textContent=gs; gp.className='gear-pill '+gs.toLowerCase(); }
   const prov=d.provider||d.active_provider||'—';
   document.getElementById('provider-name').textContent=prov;
   document.getElementById('provider-dot').style.background=d.healthy===false?'var(--red)':'var(--green)';
@@ -727,7 +748,8 @@ async function pollStatus() {
   const lat=d.latency_ms||d.latency||d.last_latency;
   if(lat!=null){ document.getElementById('stat-latency').textContent=Math.round(lat); document.getElementById('belt-badge').textContent=Math.round(lat)+'ms'; }
   document.getElementById('stat-cost').textContent=Number(d.session_cost||0).toFixed(3);
-  document.getElementById('helmet-text').textContent=`${gs} · ${prov}`;
+  const statusProv = d.creativity_provider || d.provider || d.active_provider || 'ollama';
+  document.getElementById('helmet-text').textContent = statusProv;
   if(d.memory_count!=null||d.memories!=null) updateMemPanel(d);
   const ctxPct=d.ctx_pct||d.context_pct||d.ctx_usage_pct; if(ctxPct!=null) updateCtxOrb(ctxPct);
 }
@@ -763,9 +785,7 @@ async function pollGearStatus() {
   if(g2.active_provider||g2.provider||g2.model){ document.getElementById('g2-active').textContent=g2.active_provider||g2.provider||'—'; document.getElementById('g2-providers').textContent=Array.isArray(g2.providers)?g2.providers.join(', '):(g2.providers||'—'); document.getElementById('g2-model').textContent=g2.model||g2.active_model||'—'; }
   if(g3.active_provider||g3.provider||g3.model){ document.getElementById('g3-active').textContent=g3.active_provider||g3.provider||'—'; document.getElementById('g3-providers').textContent=Array.isArray(g3.providers)?g3.providers.join(', '):(g3.providers||'—'); document.getElementById('g3-model').textContent=g3.model||g3.active_model||'—'; }
   const thresh=d.thresholds||d.token_thresholds||{}; document.getElementById('thresh-g1g2').textContent=thresh.g1_to_g2||thresh.g1g2||'—'; document.getElementById('thresh-g2g3').textContent=thresh.g2_to_g3||thresh.g2g3||'—';
-  const cg=d.current_gear||d.active_gear||'G2', gs=String(cg).toUpperCase().startsWith('G')?String(cg).toUpperCase():'G'+cg, cp=(d.g2&&d.g2.active_provider)||d.active_provider||'groq';
-  document.getElementById('helmet-text').textContent=`${gs} · ${cp}`;
-  const lk=gs+':'+cp; if(lk!==_lastGearLog){ _lastGearLog=lk; addLog('GEAR','Status: '+gs+' via '+cp); }
+  // Gear är legacy och styr inte längre något — rör inte helmet-text, logga inte.
 }
 
 // ── MEMORY ──
@@ -809,9 +829,50 @@ chatInput.addEventListener('input',()=>{ chatInput.style.height='auto'; chatInpu
 chatInput.addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); sendMessage(); } });
 sendBtn.addEventListener('click',()=>{ if(sendBtn.classList.contains('stop-mode')){ if(abortCtrl){abortCtrl.abort();abortCtrl=null;} } else sendMessage(); });
 
-function showLoading() { responsePanel.innerHTML=`<div class="loading-wrap">ZERO svarar&nbsp;<div class="dot-anim"><span></span><span></span><span></span></div></div>`; }
-function showResponse(html) { responsePanel.innerHTML=html; responsePanel.scrollTop=0; }
-function showError(msg) { responsePanel.innerHTML=`<div style="color:var(--red);font-size:13px;">⚠ ${escapeHtml(msg)}</div>`; }
+function showLoading() {
+  // Lägg en tillfällig laddningsbubbla som svaret sedan ersätter.
+  const empty = responsePanel.querySelector('.empty-state');
+  if (empty) empty.remove();
+  let load = document.getElementById('loading-bubble');
+  if (!load) {
+    load = document.createElement('div');
+    load.id = 'loading-bubble';
+    load.className = 'chat-bubble zero';
+    responsePanel.appendChild(load);
+  }
+  load.innerHTML = `<div class="loading-wrap">ZERO svarar&nbsp;<div class="dot-anim"><span></span><span></span><span></span></div></div>`;
+  responsePanel.scrollTop = responsePanel.scrollHeight;
+}
+function addUserBubble(text) {
+  const empty = responsePanel.querySelector('.empty-state');
+  if (empty) empty.remove();
+  const b = document.createElement('div');
+  b.className = 'chat-bubble user';
+  b.innerHTML = `<div class="bubble-role">Du</div>${escapeHtml(text)}`;
+  responsePanel.appendChild(b);
+  responsePanel.scrollTop = responsePanel.scrollHeight;
+}
+function showResponse(html) {
+  // Ersätt laddningsbubblan med Zeros svar, eller lägg till ny om ingen finns.
+  let load = document.getElementById('loading-bubble');
+  if (load) {
+    load.removeAttribute('id');
+    load.innerHTML = `<div class="bubble-role">Zero</div>${html}`;
+  } else {
+    const b = document.createElement('div');
+    b.className = 'chat-bubble zero';
+    b.innerHTML = `<div class="bubble-role">Zero</div>${html}`;
+    responsePanel.appendChild(b);
+  }
+  responsePanel.scrollTop = responsePanel.scrollHeight;
+}
+function showError(msg) {
+  let load = document.getElementById('loading-bubble');
+  if (load) load.removeAttribute('id');
+  const target = load || (() => { const b=document.createElement('div'); b.className='chat-bubble zero'; responsePanel.appendChild(b); return b; })();
+  target.innerHTML = `<div style="color:var(--red);font-size:13px;">⚠ ${escapeHtml(msg)}</div>`;
+  responsePanel.scrollTop = responsePanel.scrollHeight;
+}
 function setSending(on) {
   chatInput.disabled=on;
   if(on){ sendBtn.textContent='⏹ STOPP'; sendBtn.classList.add('stop-mode'); } else { sendBtn.textContent='⚡ Skicka'; sendBtn.classList.remove('stop-mode'); sendBtn.disabled=false; }
@@ -822,6 +883,7 @@ async function sendMessage() {
   if(!msg&&!pendingFiles.length) return;
   setSending(true); startLiveTimer();
   addLog('CHAT','→ '+(msg.length>60?msg.slice(0,60)+'…':msg||'[fil]'));
+  if(msg) addUserBubble(msg);
   showLoading(); setHelmetActive(true); triggerHairActive();
   setThinking([]); reasoningBox.classList.remove('open'); reasoningToggle.classList.remove('open');
 
@@ -838,12 +900,17 @@ async function sendMessage() {
       const text=res.response||res.message||res.content||res.text||(typeof res==='string'?res:JSON.stringify(res));
       let rendered; try{ rendered=typeof marked!=='undefined'&&marked.parse?marked.parse(text):'<p>'+escapeHtml(text)+'</p>'; }catch(_){ rendered='<p>'+escapeHtml(text)+'</p>'; }
       showResponse(rendered);
-      const gRaw=res.gear||res.current_gear||'G2', gs=String(gRaw).toUpperCase().startsWith('G')?String(gRaw).toUpperCase():'G'+gRaw, prov=res.provider||res.active_provider||'—';
+      const prov=res.provider||res.active_provider||'—';
+      const isCreativity = (res.gear==='creativity') || !res.gear;
+      const gs = isCreativity ? '◆' : (String(res.gear).toUpperCase().startsWith('G')?String(res.gear).toUpperCase():'G'+res.gear);
       const latency=Number(res.latency_ms||res.latency||0), msgCost=Number(res.cost||res.cost_sek||0);
       document.getElementById('stat-latency').textContent=Math.round(latency)||'—';
       sessionCost+=msgCost; document.getElementById('stat-cost').textContent=sessionCost.toFixed(3);
-      const gp=document.getElementById('gear-pill'); gp.textContent=gs; gp.className='gear-pill '+gs.toLowerCase();
-      document.getElementById('helmet-text').textContent=`${gs} · ${prov}`;
+      const gp=document.getElementById('gear-pill');
+      gp.textContent=gs;
+      gp.className='gear-pill '+(isCreativity?'creativity':gs.toLowerCase());
+      gp.title=isCreativity?'Creativity — manuellt provider-val':'';
+      document.getElementById('helmet-text').textContent=`${prov}`;
       lightBelt(latency); pulseOrbs();
       updateGrounding(calcGroundingScore(res));
       updateTokenDisplay(res.in_tok||0, res.out_tok||0);
@@ -857,11 +924,61 @@ async function sendMessage() {
   abortCtrl=null; setHelmetActive(false); setSending(false); chatInput.value=''; chatInput.style.height='auto'; chatInput.focus();
 }
 
+// ── PROVIDER-KNAPPAR (steg 1: manuellt val) ──
+let activeProvider = null;
+async function loadProviders() {
+  const d = await api('/providers');
+  if (!d || d._404 || d._error || !d.providers) return;
+  activeProvider = d.active || null;
+  const wrap = document.getElementById('provider-buttons');
+  // Lokala providers (Ollama) hör inte hemma bland chatt-val — de är infrastruktur,
+  // inte intellekt-val. De visas som status i HW-panelen, inte som knappar här.
+  const cloud = d.providers.filter(p => !p.is_local);
+  wrap.innerHTML = cloud.map(p =>
+    `<button class="prov-btn${p.canonical===activeProvider?' active':''}" `
+    + `data-prov="${p.canonical}" title="${escapeHtml(p.model||'')}">${escapeHtml(p.display||p.canonical)}</button>`
+  ).join('');
+  wrap.querySelectorAll('.prov-btn').forEach(btn =>
+    btn.addEventListener('click', () => setProvider(btn.dataset.prov)));
+  // Lokal modell-status visas redan i HW-panelen (hw-ollama-val, fylls av /monitor).
+  // Inget extra behövs här — Ollama är infrastruktur, inte ett chatt-val.
+}
+async function setProvider(name) {
+  const d = await api('/provider/set', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({provider:name})
+  });
+  if (d && d.ok) {
+    activeProvider = d.provider;
+    document.querySelectorAll('.prov-btn').forEach(b =>
+      b.classList.toggle('active', b.dataset.prov===activeProvider));
+    document.getElementById('provider-name').textContent = activeProvider;
+    addLog('SYS','Provider → '+activeProvider);
+  } else {
+    addLog('ERROR','Provider-byte misslyckades: '+(d&&d.error||'okänt'));
+  }
+}
+
+// ── SVARSLÄNGD (kort/normal/lång) ──
+let answerLength = 'normal';
+async function setLength(len) {
+  answerLength = len;
+  document.querySelectorAll('.len-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.len===len));
+  const d = await api('/length/set', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({length:len})
+  });
+  if (d && d.ok) addLog('SYS','Svarslängd → '+len);
+}
+document.querySelectorAll('.len-btn').forEach(btn =>
+  btn.addEventListener('click', () => setLength(btn.dataset.len)));
+
 // ── INIT ──
 async function init() {
   addLog('SYS','ZeroPointAI UI v26 — session '+SESSION_ID.slice(0,8)+'…');
   addLog('SYS','Ansluter till servern...');
-  await pollStatus(); await pollMonitor(); await loadCommands(); await loadSessions();
+  await pollStatus(); await pollMonitor(); await loadCommands(); await loadSessions(); await loadProviders();
   addLog('SYS','Initialisering klar');
   setInterval(pollStatus,3000); setInterval(pollMonitor,3000); setInterval(pollGearStatus,5000); setInterval(updateUptime,1000); setInterval(loadSessions,30000);
 }

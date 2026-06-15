@@ -164,6 +164,8 @@ class ZeroHandler(BaseHTTPRequestHandler):
             engine = self._get_engine()
             self._send_json({
                 "provider":       engine.provider,
+                "creativity_provider": getattr(engine, "creativity_provider", engine.provider),
+                "mode":           "creativity",
                 "db_ok":          engine.db_ok,
                 "memory_count":   engine.memory_count,
                 "session_calls":  engine.session_calls,
@@ -260,6 +262,10 @@ class ZeroHandler(BaseHTTPRequestHandler):
 
         if path == "/provider/set":
             self._handle_set_provider()
+            return
+
+        if path == "/length/set":
+            self._handle_set_length()
             return
 
         if path == "/upload":
@@ -359,6 +365,16 @@ class ZeroHandler(BaseHTTPRequestHandler):
         engine.provider            = canonical
         engine.creativity_provider = canonical   # styr faktiskt vilken modell som svarar
         self._send_json({"ok": True, "provider": canonical})
+
+    def _handle_set_length(self):
+        body   = self._read_body()
+        length = body.get("length", "").strip().lower()
+        if length not in ("kort", "normal", "lang"):
+            self._send_json({"error": f"Ogiltig längd: {length}"}, 400)
+            return
+        engine = self._get_engine()
+        engine.answer_length = length
+        self._send_json({"ok": True, "length": length})
 
     # ── Hjälp ─────────────────────────────────────────────────────────────────
 

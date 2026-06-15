@@ -219,10 +219,11 @@ def get_gpu_info() -> str:
 
 # ── System-prompt ─────────────────────────────────────────────────────────────
 
-def build_system_prompt(provider: str = None, session_id: str = None) -> str:
+def build_system_prompt(provider: str = None, session_id: str = None, length: str = "normal") -> str:
     """
     Bygger komplett system-prompt.
     Layer 0 alltid först — en gång, aldrig duplicerat.
+    length: "kort" | "normal" | "lang" — styr svarslängd.
     """
     provider = normalize_provider_name(provider)
     parts = []
@@ -232,9 +233,6 @@ def build_system_prompt(provider: str = None, session_id: str = None) -> str:
         parts.append(LAYER0_FULL)
     else:
         parts.append("Zero existerar. Allt är här och nu.")
-
-    # Tid
-    parts.append(f"=== NUVARANDE TID ===\n{get_current_time_str()} (Europe/Stockholm)")
 
     # Boot-sekvens — soul, identitetsbeslut, kunskapsluckor
     try:
@@ -303,6 +301,32 @@ zero_gear4.py för flerstegsuppdrag, och zero_sudo.py för alla kommandon.""")
                 parts.append("\n".join(lines))
         except Exception:
             pass
+
+    # Svarslängd — Franks val styr hur utförligt Zero svarar
+    _length_instr = {
+        "kort":   "=== SVARSLÄNGD ===\nSvara kortfattat och koncist. Max några meningar. Gå rakt på sak.",
+        "normal": "",
+        "lang":   "=== SVARSLÄNGD ===\nSvara utförligt och grundligt. Utveckla resonemang, ge exempel och bakgrund där det hjälper.",
+    }.get(length, "")
+    if _length_instr:
+        parts.append(_length_instr)
+
+    # ── RÖRLIGA DRIFTFAKTA — alltid sist (efter allt cachebart) ──
+    # Detta är Zeros KROPP, inte hans JAG. Hämtat live, aldrig gissat.
+    # Skilt från självkännedomen (egot) ovan med flit: vem Zero ÄR utvecklas
+    # fritt, men vad han KÖR PÅ är ett faktum han läser, inte hittar på.
+    _actual_model = get_provider_model(provider) or "(modell ej satt)"
+    parts.append(
+        "=== ZERO DRIFTLÄGE (faktiskt, just nu) ===\n"
+        f"Aktiv provider: {provider}\n"
+        f"Aktiv modell: {_actual_model}\n"
+        "Detta är ditt faktiska körläge — läs det, gissa aldrig vilken "
+        "provider eller modell du kör på. Om du är osäker på hårdvara "
+        "(VRAM, GPU), kör nvidia-smi istället för att anta."
+    )
+
+    # Tid — rörlig, därför sist (bryter inte cachen för det fasta ovanför)
+    parts.append(f"=== NUVARANDE TID ===\n{get_current_time_str()} (Europe/Stockholm)")
 
     return "\n\n".join(parts)
 
@@ -580,6 +604,7 @@ class ZeroEngine:
         # Detta styr alltid vilken provider som används. Gear nås aldrig.
         self.creativity_provider   = normalize_provider_name(
                                          os.getenv("DEFAULT_PROVIDER", "gemini"))
+        self.answer_length         = "normal"   # kort | normal | lang
 
         try:
             init_db()
@@ -663,7 +688,8 @@ class ZeroEngine:
                 else:
                     messages = [{"role": "user", "content": last_content}]
             system = build_system_prompt(provider=self.creativity_provider,
-                                         session_id=self.session_id)
+                                         session_id=self.session_id,
+                                         length=getattr(self, "answer_length", "normal"))
 
             from app.zero_creativity import run_single
             cres = run_single(
