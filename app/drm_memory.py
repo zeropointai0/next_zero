@@ -881,6 +881,23 @@ def create_identity_decision(session_id: str,
     return IdentityDecision(session_id=session_id, decision_text=decision_text, vector=vector)
 
 
+def _parse_pgvector(raw):
+    if raw is None:
+        return None
+    if isinstance(raw, list):
+        return raw
+    try:
+        s = str(raw).strip()
+        if not (s.startswith("[") and s.endswith("]")):
+            return None
+        inner = s[1:-1].strip()
+        if not inner:
+            return None
+        return [float(x) for x in inner.split(",")]
+    except (ValueError, TypeError):
+        return None
+
+
 def get_latest_identity_decision(session_id: str) -> Optional[IdentityDecision]:
     rows = execute_query("""
         SELECT * FROM identity_decisions
@@ -893,7 +910,7 @@ def get_latest_identity_decision(session_id: str) -> Optional[IdentityDecision]:
     return IdentityDecision(
         session_id=r['session_id'],
         decision_text=r['decision_text'],
-        vector=None,
+        vector=_parse_pgvector(r.get("vector")),
         wave_depth=r.get('wave_depth', 0),
         expansion_count=r.get('expansion_count', 0),
     )
